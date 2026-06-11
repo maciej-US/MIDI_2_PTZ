@@ -6,17 +6,24 @@ import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.BlockingQueue;
 
 public class MainGUI implements Runnable {
 
     private JFrame frame;
     private JComboBox<String> midiComboBox;
     private JButton connectButton;
-    private VerticalSlider slider;
+    private VerticalSlider panSlider;
+    private VerticalSlider zoomSlider;
     private Thread consumerThread;
+    private JogIndicator jogIndicator;
+    private JLabel modeLabel;
 
-
+    private boolean tallyOn = false;
+    private MidiOutputController midiOut;
+    private boolean absoluteTiltMode = false;
     private List<Integer> validDeviceIndexes = new ArrayList<>();
+
 
     @Override
     public void run() {
@@ -44,13 +51,22 @@ public class MainGUI implements Runnable {
 
         loadMidiDevices();
 
-        slider = new VerticalSlider();
-        slider.setPreferredSize(new Dimension(80, 200));
+        panSlider = new VerticalSlider();
+        panSlider.setPreferredSize(new Dimension(80, 200));
+        modeLabel = new JLabel("MODE: JOYSTICK");
+        frame.add(modeLabel, BorderLayout.SOUTH);
 
-        frame.add(slider, BorderLayout.CENTER);
+        zoomSlider = new VerticalSlider();
+        zoomSlider.setPreferredSize(new Dimension(80, 200));
+
+        jogIndicator = new JogIndicator();
+        jogIndicator.setPreferredSize(new Dimension(200, 80));
+
+        frame.add(panSlider, BorderLayout.WEST);
+        frame.add(zoomSlider, BorderLayout.EAST);
+        frame.add(jogIndicator, BorderLayout.CENTER);
 
         frame.setVisible(true);
-
     }
 
     private void loadMidiDevices() {
@@ -106,44 +122,106 @@ public class MainGUI implements Runnable {
         System.out.println("Łączenie z urządzeniem indeks: " + deviceIndex);
 
         MidiListener listener = MidiListener.getInstance(deviceIndex);
+        midiOut = MidiOutputController.getInstance(4);
 
-        Thread listenerThread = new Thread(listener);
+        Thread listenerThread = new Thread(listener, "MIDI-Listener");
         listenerThread.start();
+        ViscaPTZController.startPanWatchdog();
+
+        // tutaj dopiero uruchamiamy consumer
+        BlockingQueue<String> queue = listener.getMessageQueue();
+
+        consumerThread = new Thread(() -> {
+            while (true) {
+                try {
+                    String msg = queue.take();
+
+                    System.out.println(msg);
+
+                    if (msg.startsWith("CC_")) {
+                        String[] parts = msg.split("_");
+
+                        int cc = Integer.parseInt(parts[2]);
+                        int value = Integer.parseInt(parts[3]);
+
+                        // SLIDER TILT (VOLUME - CC 11)
+
+                        if (cc == 11) {
+                            SwingUtilities.invokeLater(() -> panSlider.setValue(value));
+                            if (absoluteTiltMode) {
+                                ViscaPTZController.tiltAbsolute(value);
+                            } else {
+                                ViscaPTZController.tilt(value);
+                            }
+                        }
+
+
+                        // SLIDER ZOOM (PITCH - CC 0)
+                        if (cc == 0) {
+                            SwingUtilities.invokeLater(() -> zoomSlider.setValue(value));
+                            ViscaZoomController.sendZoom(value);
+                        }
+
+                        // JOG PAN (JOG WHEEL - CC 19)
+                        if (cc == 19) {
+                            SwingUtilities.invokeLater(() -> jogIndicator.updateDirection(value));
+                            ViscaPTZController.pan(value);
+                        }
+                    }
+
+                    if (msg.startsWith("NOTE_")) {
+                        String[] parts = msg.split("_");
+
+                        int channel = Integer.parseInt(parts[1]);
+                        int note = Integer.parseInt(parts[2]);
+                        int value = Integer.parseInt(parts[3]);
+
+                        // TALLY (NOTE 18) - toggle on/off
+                        if (note == 18 && value > 0) {
+
+                            tallyOn = !tallyOn; // toggle
+
+                            if (tallyOn) {
+                                System.out.println("TALLY ON -> preset 96");
+                                ViscaPresetController.recallPreset(96);
+                                midiOut.ledOn(18); // zapal LED
+                            } else {
+                                System.out.println("TALLY OFF -> preset 97");
+                                ViscaPresetController.recallPreset(97);
+                                midiOut.ledOff(18); // zgaś LED
+                            }
+                        }
+                        if (note == 5 && value > 0) {
+
+                            absoluteTiltMode = !absoluteTiltMode;
+
+                            if (absoluteTiltMode) {
+                                System.out.println("TRYB: ABSOLUTE TILT");
+
+                                midiOut.ledOn(21);
+
+                                modeLabel.setText("MODE: ABSOLUTE");
+
+                            } else {
+                                System.out.println("TRYB: JOYSTICK");
+
+                                midiOut.ledOff(21);
+
+                                modeLabel.setText("MODE: JOYSTICK");
+                            }
+                        }
+                    }
+
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                }
+            }
+        }, "MIDI-Consumer");
+
+        consumerThread.start();
 
         connectButton.setEnabled(false);
         midiComboBox.setEnabled(false);
-
     }
-    BlockingQueue<String> queue = listener.getMessageQueue();
-
-    consumerThread = new Thread(() -> {
-        while (true) {
-            try {
-                String msg = queue.take();
-
-                System.out.println(msg); // nadal na konsolę
-
-                if (msg.startsWith("CC_")) {
-                    String[] parts = msg.split("_");
-
-                    int channel = Integer.parseInt(parts[1]);
-                    int cc = Integer.parseInt(parts[2]);
-                    int value = Integer.parseInt(parts[3]);
-
-                    // interesuje nas CC 11
-                    if (cc == 11) {
-
-                        // update GUI na EDT
-                        SwingUtilities.invokeLater(() -> slider.setValue(value));
-                    }
-                }
-
-            } catch (Exception ex) {
-                ex.printStackTrace();
-            }
-        }
-    });
-
-consumerThread.start();
 
 }
