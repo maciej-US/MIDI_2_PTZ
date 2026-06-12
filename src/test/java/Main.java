@@ -1,5 +1,3 @@
-import uci.bcd2ptz.ViscaPresetController;
-
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;

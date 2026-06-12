@@ -21,7 +21,7 @@ public class MainGUI implements Runnable {
 
     private boolean tallyOn = false;
     private MidiOutputController midiOut;
-    private boolean absoluteTiltMode = false;
+    private boolean absoluteMode = false;
     private List<Integer> validDeviceIndexes = new ArrayList<>();
 
 
@@ -148,7 +148,7 @@ public class MainGUI implements Runnable {
 
                         if (cc == 11) {
                             SwingUtilities.invokeLater(() -> panSlider.setValue(value));
-                            if (absoluteTiltMode) {
+                            if (absoluteMode) {
                                 ViscaPTZController.tiltAbsolute(value);
                             } else {
                                 ViscaPTZController.tilt(value);
@@ -159,13 +159,17 @@ public class MainGUI implements Runnable {
                         // SLIDER ZOOM (PITCH - CC 0)
                         if (cc == 0) {
                             SwingUtilities.invokeLater(() -> zoomSlider.setValue(value));
-                            ViscaZoomController.sendZoom(value);
+                            ViscaPTZController.zoom(value);
                         }
 
                         // JOG PAN (JOG WHEEL - CC 19)
                         if (cc == 19) {
                             SwingUtilities.invokeLater(() -> jogIndicator.updateDirection(value));
-                            ViscaPTZController.pan(value);
+                            if (absoluteMode) {
+                                ViscaPTZController.panAbsolute(value);
+                            } else {
+                                ViscaPTZController.pan(value);
+                            }
                         }
                     }
 
@@ -183,30 +187,26 @@ public class MainGUI implements Runnable {
 
                             if (tallyOn) {
                                 System.out.println("TALLY ON -> preset 96");
-                                ViscaPresetController.recallPreset(96);
+                                ViscaPTZController.recallPreset(96);
                                 midiOut.ledOn(18); // zapal LED
                             } else {
                                 System.out.println("TALLY OFF -> preset 97");
-                                ViscaPresetController.recallPreset(97);
+                                ViscaPTZController.recallPreset(97);
                                 midiOut.ledOff(18); // zgaś LED
                             }
                         }
                         if (note == 5 && value > 0) {
 
-                            absoluteTiltMode = !absoluteTiltMode;
+                            absoluteMode = !absoluteMode;
 
-                            if (absoluteTiltMode) {
+                            if (absoluteMode) {
                                 System.out.println("TRYB: ABSOLUTE TILT");
-
                                 midiOut.ledOn(21);
-
                                 modeLabel.setText("MODE: ABSOLUTE");
 
                             } else {
                                 System.out.println("TRYB: JOYSTICK");
-
                                 midiOut.ledOff(21);
-
                                 modeLabel.setText("MODE: JOYSTICK");
                             }
                         }

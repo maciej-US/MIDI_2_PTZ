@@ -18,6 +18,7 @@ public class MidiOutputController {
 
             System.out.println("MIDI OUT gotowe: " + devices[deviceIndex].getName());
 
+
         } catch (Exception e) {
             e.printStackTrace();
         }
