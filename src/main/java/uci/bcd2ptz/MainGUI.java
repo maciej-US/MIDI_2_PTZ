@@ -164,13 +164,37 @@ public class MainGUI implements Runnable {
 
                         // JOG PAN (JOG WHEEL - CC 19)
                         if (cc == 19) {
-                            SwingUtilities.invokeLater(() -> jogIndicator.updateDirection(value));
+
+                            SwingUtilities.invokeLater(() -> {
+
+                                int speed;
+                                int direction;
+
+                                if (value == 64) {
+                                    jogIndicator.setJog(0, 0);
+                                    return;
+                                }
+
+                                if (value > 64) {
+                                    direction = 1; // prawo
+                                    speed = value - 64;
+                                } else {
+                                    direction = -1; // lewo
+                                    speed = 64 - value;
+                                }
+
+                                int jogSpeed = Math.min(3, Math.max(1, speed / 21 + 1));
+
+                                jogIndicator.setJog(direction, jogSpeed);
+                            });
+
                             if (absoluteMode) {
                                 ViscaPTZController.panAbsolute(value);
                             } else {
                                 ViscaPTZController.pan(value);
                             }
                         }
+
                     }
 
                     if (msg.startsWith("NOTE_")) {
