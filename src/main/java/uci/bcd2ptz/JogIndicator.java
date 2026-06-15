@@ -10,7 +10,12 @@ public class JogIndicator extends JComponent {
     private int speed = 0;     // 0–3
     private double angle = 0.0;
 
-    private final Timer timer;
+    private Timer timer = null;
+    private long lastUpdateTime = 0;
+    private int displaySpeed = 0;
+    private long lastSpeedUpdateTime = 0;
+    private static final int HOLD_MS = 140;
+
 
     private static final Color LED_ON = Color.decode("#FFBF00");
     private static final Color LED_OFF = new Color(60, 60, 60);
@@ -20,21 +25,46 @@ public class JogIndicator extends JComponent {
         setPreferredSize(new Dimension(240, 140));
 
         timer = new Timer(30, e -> {
+
+            long now = System.currentTimeMillis();
+
+            // ✅ WATCHDOG – brak update = STOP
+            if (now - lastUpdateTime > 150) {
+                speed = 0;
+                direction = 0;
+            }
+
             if (speed > 0 && direction != 0) {
                 angle += direction * speed * 2.0;
                 repaint();
+            } else {
+                timer.stop();
+                repaint();
             }
         });
+
         timer.setRepeats(true);
     }
+
 
     /**
      * direction: -1 (lewo), 0 (stop), 1 (prawo)
      * speed: 0–3
      */
     public void setJog(int direction, int speed) {
+
         this.direction = direction;
         this.speed = speed;
+
+        // ✅ latch – zapamiętaj max prędkość
+        if (speed > displaySpeed) {
+            displaySpeed = speed;
+        }
+
+        lastSpeedUpdateTime = System.currentTimeMillis();
+
+        // ✅ update watchdog
+        this.lastUpdateTime = System.currentTimeMillis();
 
         if (speed == 0 || direction == 0) {
             timer.stop();
@@ -43,6 +73,7 @@ public class JogIndicator extends JComponent {
                 timer.start();
             }
         }
+
         repaint();
     }
 
@@ -88,20 +119,22 @@ public class JogIndicator extends JComponent {
         int spacing = 6;
 
         // pozycje startowe
-        int leftStartX = w / 2 - 90;   // lewa grupa
-        int rightStartX = w / 2 + 30;  // prawa grupa
+        int leftStartX = w / 2 - 70;   // lewa grupa
+        int rightStartX = w / 2 + 10;  // prawa grupa
 
-        // LEWA grupa <<< (wierzchołki w LEWO)
+        // LEWA
         for (int i = 0; i < 3; i++) {
             int cx = leftStartX + i * (ledWidth + spacing);
             int cy = centerY;
 
             Polygon tri = new Polygon();
-            tri.addPoint(cx, cy - ledHeight / 2);      // góra
-            tri.addPoint(cx, cy + ledHeight / 2);      // dół
-            tri.addPoint(cx - ledWidth, cy);           // wierzchołek w LEWO
+            tri.addPoint(cx, cy - ledHeight / 2);
+            tri.addPoint(cx, cy + ledHeight / 2);
+            tri.addPoint(cx - ledWidth, cy);
 
-            if (direction == -1 && speed >= i + 1) {
+            int level = 3 - i; // ✅ klucz
+
+            if (direction == -1 && speed >= level) {
                 g2.setColor(LED_ON);
             } else {
                 g2.setColor(LED_OFF);

@@ -13,11 +13,13 @@ public class MainGUI implements Runnable {
     private JFrame frame;
     private JComboBox<String> midiComboBox;
     private JButton connectButton;
-    private VerticalSlider panSlider;
+    private VerticalSlider tiltSlider;
     private VerticalSlider zoomSlider;
     private Thread consumerThread;
     private JogIndicator jogIndicator;
-    private JLabel modeLabel;
+    //private JLabel modeLabel;
+    buttonLED tiltModeButton = new buttonLED("ABS");
+    buttonLED autoFollowModeButton = new buttonLED("TRC");
 
     private boolean tallyOn = false;
     private MidiOutputController midiOut;
@@ -32,7 +34,7 @@ public class MainGUI implements Runnable {
 
     private void initialize() {
         frame = new JFrame("BCD2PTZ - MIDI");
-        frame.setSize(500, 120);
+        frame.setSize(500, 350);
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setLayout(new BorderLayout());
 
@@ -51,20 +53,70 @@ public class MainGUI implements Runnable {
 
         loadMidiDevices();
 
-        panSlider = new VerticalSlider();
-        panSlider.setPreferredSize(new Dimension(80, 200));
-        modeLabel = new JLabel("MODE: JOYSTICK");
-        frame.add(modeLabel, BorderLayout.SOUTH);
+        // TILT slider
+        tiltSlider = new VerticalSlider();
+        tiltSlider.setPreferredSize(new Dimension(80, 200));
+        tiltSlider.setJoystickMode(!absoluteMode);
+        tiltSlider.setValue(64);
 
+        JLabel tiltLabel = new JLabel("TILT", SwingConstants.CENTER);
+        tiltLabel.setForeground(Color.BLACK);
+
+        JPanel tiltPanel = new JPanel();
+        tiltPanel.setLayout(new BorderLayout());
+        tiltPanel.setOpaque(false);
+        tiltPanel.add(tiltLabel, BorderLayout.NORTH);
+        tiltPanel.add(tiltSlider, BorderLayout.CENTER);
+        JPanel tiltBottomPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 4));
+        tiltBottomPanel.setOpaque(false);
+        tiltBottomPanel.add(tiltModeButton);
+        tiltPanel.add(tiltBottomPanel, BorderLayout.SOUTH);
+       // frame.add(tiltPanel, BorderLayout.WEST);
+
+        //Zoom slider
         zoomSlider = new VerticalSlider();
         zoomSlider.setPreferredSize(new Dimension(80, 200));
+        zoomSlider.setJoystickMode(absoluteMode == true);
 
+        JLabel zoomLabel = new JLabel("ZOOM", SwingConstants.CENTER);
+        zoomLabel.setForeground(Color.BLACK);
+        JPanel zoomPanel = new JPanel();
+        zoomPanel.setLayout(new BorderLayout());
+        zoomPanel.setOpaque(false);
+        zoomPanel.add(zoomLabel, BorderLayout.NORTH);
+        zoomPanel.add(zoomSlider, BorderLayout.CENTER);
+        JPanel zoomBottomPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 4));
+        zoomBottomPanel.setOpaque(false);
+        zoomBottomPanel.add(autoFollowModeButton);
+        zoomPanel.add(zoomBottomPanel, BorderLayout.SOUTH);
+       // frame.add(zoomPanel, BorderLayout.EAST);
+
+        //PAn Jog
         jogIndicator = new JogIndicator();
         jogIndicator.setPreferredSize(new Dimension(200, 80));
+        //frame.add(jogIndicator, BorderLayout.CENTER);
 
-        frame.add(panSlider, BorderLayout.WEST);
-        frame.add(zoomSlider, BorderLayout.EAST);
-        frame.add(jogIndicator, BorderLayout.CENTER);
+        JPanel controlsPanel = new JPanel();
+        controlsPanel.setLayout(new GridBagLayout());
+        controlsPanel.setOpaque(false);
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(5, 20, 5, 20);
+        gbc.gridy = 0;
+        gbc.weighty = 1.0;
+        gbc.anchor = GridBagConstraints.SOUTH;
+        gbc.fill = GridBagConstraints.VERTICAL;
+
+        gbc.gridx = 0;
+        controlsPanel.add(tiltPanel, gbc);
+
+        gbc.gridx = 1;
+        controlsPanel.add(jogIndicator, gbc);
+
+        gbc.gridx = 2;
+        controlsPanel.add(zoomPanel, gbc);
+
+        frame.add(controlsPanel, BorderLayout.CENTER);
 
         frame.setVisible(true);
     }
@@ -128,6 +180,16 @@ public class MainGUI implements Runnable {
         listenerThread.start();
         ViscaPTZController.startPanWatchdog();
 
+        //resetowanie LEDów
+        for (int cc = 0; cc <= 127; cc++) {
+            midiOut.ledOff(cc);
+
+            try {
+                Thread.sleep(5); // ✅ KLUCZ
+            } catch (InterruptedException ignored) {}
+
+        }
+
         // tutaj dopiero uruchamiamy consumer
         BlockingQueue<String> queue = listener.getMessageQueue();
 
@@ -147,14 +209,13 @@ public class MainGUI implements Runnable {
                         // SLIDER TILT (VOLUME - CC 11)
 
                         if (cc == 11) {
-                            SwingUtilities.invokeLater(() -> panSlider.setValue(value));
+                            SwingUtilities.invokeLater(() -> tiltSlider.setValue(value));
                             if (absoluteMode) {
                                 ViscaPTZController.tiltAbsolute(value);
                             } else {
                                 ViscaPTZController.tilt(value);
                             }
                         }
-
 
                         // SLIDER ZOOM (PITCH - CC 0)
                         if (cc == 0) {
@@ -183,7 +244,17 @@ public class MainGUI implements Runnable {
                                     speed = 64 - value;
                                 }
 
-                                int jogSpeed = Math.min(3, Math.max(1, speed / 21 + 1));
+                                int jogSpeed;
+
+                                if (speed <= 1) {
+                                    jogSpeed = 1;
+                                } else if (speed <= 3) {
+                                    jogSpeed = 2;
+                                } else {
+                                    jogSpeed = 3;
+                                }
+
+                                System.out.println("Jog Params: Direction=" + direction + ", Speed=" + jogSpeed);
 
                                 jogIndicator.setJog(direction, jogSpeed);
                             });
@@ -210,28 +281,28 @@ public class MainGUI implements Runnable {
                             tallyOn = !tallyOn; // toggle
 
                             if (tallyOn) {
-                                System.out.println("TALLY ON -> preset 96");
                                 ViscaPTZController.recallPreset(96);
                                 midiOut.ledOn(18); // zapal LED
                             } else {
-                                System.out.println("TALLY OFF -> preset 97");
                                 ViscaPTZController.recallPreset(97);
                                 midiOut.ledOff(18); // zgaś LED
                             }
                         }
+
+                        // MODE (NOTE 5) - toggle TILT absolute/joystick
                         if (note == 5 && value > 0) {
 
                             absoluteMode = !absoluteMode;
 
                             if (absoluteMode) {
-                                System.out.println("TRYB: ABSOLUTE TILT");
                                 midiOut.ledOn(21);
-                                modeLabel.setText("MODE: ABSOLUTE");
+                                tiltSlider.setJoystickMode(false);
+                                tiltModeButton.setLight(true);
 
                             } else {
-                                System.out.println("TRYB: JOYSTICK");
                                 midiOut.ledOff(21);
-                                modeLabel.setText("MODE: JOYSTICK");
+                                tiltSlider.setJoystickMode(true);
+                                tiltModeButton.setLight(false);
                             }
                         }
                     }
