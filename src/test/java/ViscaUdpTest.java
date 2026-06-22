@@ -28,26 +28,6 @@ public class ViscaUdpTest {
     }
     private static int sessionId =1;
 
-    /**
-     * Konwertuje tablicę bajtów na sformatowany ciąg heksadecymalny.
-     *
-     * Każdy bajt jest reprezentowany jako dwie cyfry heksadecymalne (0-F),
-     * oddzielone spacją. Przydatne do debugowania pakietów UDP w formacie VISCA.
-     *
-     * Przykład:
-     * {@code
-     * byte[] data = {0x01, (byte)0xFF, 0x00, 0x42};
-     * String hex = bytesToHex(data, data.length);
-     * // Wynik: "01 FF 00 42"
-     * }
-     *
-     * @param data tablica bajtów do konwersji (może być null)
-     * @param length liczba bajtów do konwersji
-     * @return sformatowany ciąg heksadecymalny, oddzielony spacjami,
-     *         lub "null" jeśli tablica jest pusta
-     *
-     * @see String#format(String, Object...)
-     */
     private static String bytesToHex(byte[] data, int length) {
         if (data == null) return "null";
         StringBuilder sb = new StringBuilder();

@@ -1,25 +1,34 @@
 package uci.bcd2ptz;
 
+import javax.swing.*;
+
 public class Main {
 
     public static void main(String[] args) {
 
-        System.out.println("=== BCD2PTZ :: Start systemu ===");
 
-        startGUI();
+        //TODO: ładowanie konfiguracjiz pliku.
+        // SCAFF:  (ustawianie ręczne!)
+        int midiIn = 5; //MIDI IN z konsoli
+        int midiOut = 4; //MIDI OUT z konsoli
 
-        System.out.println("=== GUI uruchomione ===");
-    }
+        MidiEventRouter midi = MidiEventRouter.getInstance(midiIn, midiOut);
+        midi.setOutputMode(MidiEventRouter.OutputMode.PARSED);
 
-    /**
-     * Uruchamia interfejs graficzny w osobnym wątku.
-     */
-    private static void startGUI() {
-        Thread guiThread = new Thread(new MainGUI(), "GUI-Thread");
+        MidiOutputController midiOutCtrl = MidiOutputController.getInstance(midiOut);
 
-        // GUI to wątek użytkowy → nie daemon
-        guiThread.setDaemon(false);
+        // ✅ GUI
+        MainGUI gui = new MainGUI();
+        new Thread(gui).start();
 
-        guiThread.start();
+        // ✅ CORE
+        MidiToPTZ core = new MidiToPTZ(midi, midiOutCtrl, gui);
+        gui.setCore(core);
+
+        // ✅ start systemu
+        core.start();
+
+        // ✅ VISCA watchdog
+        ViscaPTZController.startPanWatchdog();
     }
 }

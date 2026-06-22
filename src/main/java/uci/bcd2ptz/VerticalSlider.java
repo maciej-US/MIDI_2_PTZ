@@ -2,23 +2,101 @@ package uci.bcd2ptz;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.*;
+import java.util.function.Consumer;
 
 public class VerticalSlider extends JPanel {
 
     private int value = 64; // 0–127
     private boolean joystickMode = false;
 
+    private boolean dragging = false;
+
+    // ✅ callback do Core
+    private Consumer<Integer> onValueChange;
+
+    public VerticalSlider() {
+
+        // klik / release
+        addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                dragging = true;
+                updateValueFromMouse(e.getY());
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                dragging = false;
+
+                if (joystickMode) {
+                    setValue(64);
+                    fireValueChanged();
+                }
+            }
+        });
+
+        // drag
+        addMouseMotionListener(new MouseMotionAdapter() {
+            @Override
+            public void mouseDragged(MouseEvent e) {
+                if (dragging) {
+                    updateValueFromMouse(e.getY());
+                }
+            }
+        });
+    }
+
+    // ==================== API ====================
+
+    public void setOnValueChange(Consumer<Integer> callback) {
+        this.onValueChange = callback;
+    }
+
+    private void fireValueChanged() {
+        if (onValueChange != null) {
+            onValueChange.accept(value);
+        }
+    }
+
     public void setValue(int value) {
         this.value = Math.max(0, Math.min(127, value));
         repaint();
     }
 
+    public int getValue() {
+        return value;
+    }
 
     public void setJoystickMode(boolean joystickMode) {
         this.joystickMode = joystickMode;
         repaint();
     }
 
+    // ==================== LOGIKA MYSZY ====================
+
+    private void updateValueFromMouse(int mouseY) {
+
+        int height = getHeight();
+
+        int top = 15;
+        int bottom = height - 15;
+
+        // clamp
+        mouseY = Math.max(top, Math.min(bottom, mouseY));
+
+        double norm = (double) (mouseY - top) / (bottom - top);
+
+        int newValue = (int) ((1 - norm) * 127);
+
+        if (newValue != value) {
+            value = newValue;
+            repaint();
+            fireValueChanged();
+        }
+    }
+
+    // ==================== RYSOWANIE ====================
 
     @Override
     protected void paintComponent(Graphics g) {
@@ -36,17 +114,9 @@ public class VerticalSlider extends JPanel {
         int top = 15;
         int bottom = height - 15;
 
-        // --- skala (tło toru) ---
+        // --- tor ---
+        g2.setStroke(new BasicStroke(joystickMode ? 3f : 2f));
 
-        if (joystickMode) {
-            g2.setStroke(new BasicStroke(3f)); // grubszy w joystick
-        } else {
-            g2.setStroke(new BasicStroke(2f));
-        }
-
-        g2.fillRoundRect(centerX - trackWidth / 2, top, trackWidth, bottom - top, 6, 6);
-
-        // --- podświetlenie toru ---
         GradientPaint trackGradient = new GradientPaint(
                 centerX, top,
                 new Color(80, 80, 80),
@@ -56,66 +126,49 @@ public class VerticalSlider extends JPanel {
         g2.setPaint(trackGradient);
         g2.fillRoundRect(centerX - trackWidth / 2, top, trackWidth, bottom - top, 6, 6);
 
-        // --- przeliczenie pozycji ---
+        // --- pozycja ---
         double normalized = value / 127.0;
         int y = (int) ((bottom - top) * (1 - normalized)) + top;
 
-        g2.setColor(new Color(255, 191, 0, 120));
-
-        // środek (neutral)
         int centerY = (int) ((bottom - top) * (1 - 64.0 / 127.0)) + top;
+
+        g2.setColor(new Color(255, 191, 0, 120));
 
         if (joystickMode) {
 
-            // ✅ JOYSTICK MODE – od środka
             if (y < centerY) {
-                // ruch w górę
                 g2.fillRoundRect(centerX - 3, y, 6, centerY - y, 4, 4);
             } else {
-                // ruch w dół
                 g2.fillRoundRect(centerX - 3, centerY, 6, y - centerY, 4, 4);
             }
 
         } else {
-
-            // ✅ ABSOLUTE MODE – od dołu
             g2.fillRoundRect(centerX - 3, y, 6, bottom - y, 4, 4);
         }
 
-        // --- SKALA PO LEWEJ ---
+        // --- skala ---
         int scaleX = centerX - 25;
 
         g2.setColor(new Color(120, 120, 120));
 
-        // co 16 jednostek (~równy podział)
         for (int i = 0; i <= 127; i += 16) {
-            double norm = i / 127.0;
-            int ty = (int) ((bottom - top) * (1 - norm)) + top;
+            int ty = (int) ((bottom - top) * (1 - i / 127.0)) + top;
+            int tickWidth = (i == 64) ? 10 : 5;
 
-            int tickWidth = (i == 64) ? 10 : 5; // środek większy
-
-            // grubsza linia dla środka
-            if (i == 64) {
-                g2.setStroke(new BasicStroke(2f));
-            } else {
-                g2.setStroke(new BasicStroke(1f));
-            }
-
+            g2.setStroke(new BasicStroke(i == 64 ? 2f : 1f));
             g2.drawLine(scaleX - tickWidth, ty, scaleX, ty);
         }
 
-        // --- suwak (fader cap) ---
+        // --- gałka ---
         int knobWidth = 40;
         int knobHeight = 16;
 
         int knobX = centerX - knobWidth / 2;
         int knobY = y - knobHeight / 2;
 
-        // cień
         g2.setColor(new Color(0, 0, 0, 80));
         g2.fillRoundRect(knobX + 2, knobY + 2, knobWidth, knobHeight, 6, 6);
 
-        // gradient suwaka
         GradientPaint knobGradient = new GradientPaint(
                 knobX, knobY,
                 new Color(220, 220, 220),
@@ -126,17 +179,12 @@ public class VerticalSlider extends JPanel {
         g2.setPaint(knobGradient);
         g2.fillRoundRect(knobX, knobY, knobWidth, knobHeight, 6, 6);
 
-        // obramowanie
         g2.setColor(Color.BLACK);
         g2.setStroke(new BasicStroke(2f));
         g2.drawRoundRect(knobX, knobY, knobWidth, knobHeight, 6, 6);
 
-        // kreska na środku (jak w realnym faderze)
-        g2.setColor(Color.BLACK);
-        g2.setStroke(new BasicStroke(2f));
         g2.drawLine(centerX, knobY + 3, centerX, knobY + knobHeight - 3);
 
         g2.dispose();
     }
-
 }

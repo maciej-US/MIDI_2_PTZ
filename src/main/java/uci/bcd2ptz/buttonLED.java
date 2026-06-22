@@ -2,33 +2,109 @@ package uci.bcd2ptz;
 
 import javax.swing.*;
 import java.awt.*;
+import java.util.ArrayList;
+import java.util.List;
 
 public class buttonLED extends JComponent {
 
-    private boolean isLit = false;
-    String label;
+    // ===== TRYB LED =====
+    public enum LedMode {
+        OFF,
+        ON,
+        BLINK
+    }
 
+    private LedMode mode = LedMode.OFF;
+    private final String label;
+
+    // ===== KOLORY =====
     private static final Color LED_ON = Color.decode("#FFBF00");
     private static final Color LED_OFF = new Color(50, 50, 50);
 
-    private static final Color BG = new Color(128, 128, 128);
     private static final Color BORDER = new Color(64, 64, 64);
     private static final Color TEXT = Color.BLACK;
 
+    // ===== GLOBALNY BLINK ENGINE =====
+    private static boolean blinkState = false;
+    private static final List<buttonLED> instances = new ArrayList<>();
+
+    static {
+        // OKOŁO 3 Hz (zmiana stanu co 166 ms)
+        Timer blinkTimer = new Timer(166, e -> {
+            blinkState = !blinkState;
+
+            // repaint tylko tych co migają
+            for (buttonLED b : instances) {
+                if (b.mode == LedMode.BLINK) {
+                    b.repaint();
+                }
+            }
+        });
+        blinkTimer.start();
+    }
+
+    //======== Obsługa eventów
+
+    private Runnable onClick;
+    private boolean pressed = false;
+
+    // ===== KONSTRUKTOR =====
     public buttonLED(String label) {
+        this.label = label;
+
         Dimension fixedSize = new Dimension(45, 40);
         setPreferredSize(fixedSize);
         setMinimumSize(fixedSize);
         setMaximumSize(fixedSize);
-        setSize(fixedSize);
-        this.label = label;
+
+        addMouseListener(new java.awt.event.MouseAdapter() {
+
+            @Override
+            public void mousePressed(java.awt.event.MouseEvent e) {
+                pressed = true;
+                repaint();
+            }
+
+            @Override
+            public void mouseReleased(java.awt.event.MouseEvent e) {
+
+                pressed = false;
+                repaint();
+
+                // klik jeśli kursor nadal w komponencie
+                if (contains(e.getPoint())) {
+                    fireClick();
+                }
+            }
+        });
+
+        instances.add(this);
     }
 
-    public void setLight(boolean isOn) {
-        this.isLit = isOn;
+    // ===== API =====
+    public void setMode(LedMode mode) {
+        this.mode = mode;
         repaint();
     }
 
+
+    public void setOnClick(Runnable onClick) {
+        this.onClick = onClick;
+    }
+
+    private void fireClick() {
+        if (onClick != null) {
+            onClick.run();
+        }
+    }
+
+
+    public void setLight(boolean isOn) {
+        this.mode = isOn ? LedMode.ON : LedMode.OFF;
+        repaint();
+    }
+
+    // ===== ROZMIAR NA SZTYWNO =====
     @Override
     public Dimension getPreferredSize() {
         return new Dimension(45, 40);
@@ -44,7 +120,7 @@ public class buttonLED extends JComponent {
         return new Dimension(45, 40);
     }
 
-
+    // ===== RENDER =====
     @Override
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
@@ -55,54 +131,71 @@ public class buttonLED extends JComponent {
         int w = getWidth();
         int h = getHeight();
 
-        // --- obudowa przycisku ---
-
+        // === TŁO (jak slider) ===
         GradientPaint bgGradient = new GradientPaint(
                 0, 0, new Color(200, 200, 200),
                 0, h, new Color(120, 120, 120)
         );
 
+
+        if (pressed) {
+            g2.translate(1, 1);
+        }
+
         g2.setPaint(bgGradient);
         g2.fillRoundRect(2, 2, w - 4, h - 4, 8, 8);
 
-
-        // lekki cień
+        // cień
         g2.setColor(new Color(0, 0, 0, 80));
         g2.drawRoundRect(3, 3, w - 6, h - 6, 10, 10);
 
         // ramka
         g2.setColor(BORDER);
-        g2.setStroke(new BasicStroke(2f));
-        g2.drawRoundRect(2, 2, w - 4, h - 4, 10, 10);
+        g2.setStroke(new BasicStroke(1.5f));
+        g2.drawRoundRect(2, 2, w - 4, h - 4, 8, 8);
 
-        // --- napis ---
-        g2.setFont(new Font("SansSerif", Font.BOLD, 14));
+        // === TEKST ===
+        g2.setFont(new Font("SansSerif", Font.BOLD, 12));
         FontMetrics fm = g2.getFontMetrics();
 
         int textWidth = fm.stringWidth(label);
         int textX = (w - textWidth) / 2;
-        int textY = 16;
+        int textY = 14;
 
         g2.setColor(TEXT);
         g2.drawString(label, textX, textY);
 
-
+        // === LED ===
         int ledWidth = 20;
         int ledHeight = 10;
         int ledX = (w - ledWidth) / 2;
         int ledY = h - ledHeight - 5;
 
+        // obliczenie stanu LED
+        boolean ledOn;
+
+        switch (mode) {
+            case ON:
+                ledOn = true;
+                break;
+            case BLINK:
+                ledOn = blinkState;
+                break;
+            default:
+                ledOn = false;
+        }
+
         // glow
-        if (isLit) {
-            g2.setColor(new Color(255, 191, 0, 80));
+        if (ledOn) {
+            g2.setColor(new Color(255, 191, 0, 70));
             g2.fillRoundRect(ledX - 2, ledY - 2, ledWidth + 4, ledHeight + 4, 8, 8);
         }
 
-        // LED
-        g2.setColor(isLit ? LED_ON : LED_OFF);
+        // LED właściwy
+        g2.setColor(ledOn ? LED_ON : LED_OFF);
         g2.fillRoundRect(ledX, ledY, ledWidth, ledHeight, 8, 8);
 
-        // border
+        // border LED
         g2.setColor(Color.BLACK);
         g2.setStroke(new BasicStroke(1f));
         g2.drawRoundRect(ledX, ledY, ledWidth, ledHeight, 8, 8);

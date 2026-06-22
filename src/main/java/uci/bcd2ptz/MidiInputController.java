@@ -4,23 +4,23 @@ import javax.sound.midi.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
-public class MidiListener implements Receiver, Runnable {
+public class MidiInputController implements Receiver, Runnable {
 
-    private static MidiListener instance;
+    private static MidiInputController instance;
 
     private final int deviceIndex;
     private MidiDevice device;
     private BlockingQueue<String> messageQueue = new LinkedBlockingQueue<>();
 
     // PRIVATE CONSTRUCTOR
-    private MidiListener(int deviceIndex) {
+    private MidiInputController(int deviceIndex) {
         this.deviceIndex = deviceIndex;
     }
 
     // SINGLETON
-    public static synchronized MidiListener getInstance(int deviceIndex) {
+    public static synchronized MidiInputController getInstance(int deviceIndex) {
         if (instance == null) {
-            instance = new MidiListener(deviceIndex);
+            instance = new MidiInputController(deviceIndex);
         }
         return instance;
     }
@@ -62,6 +62,7 @@ public class MidiListener implements Receiver, Runnable {
             } else if (command == ShortMessage.NOTE_ON || command == ShortMessage.NOTE_OFF) {
                 result = "NOTE_" + channel + "_" + data1 + "_" + data2;
             }
+
 
             if (result != null) {
                 messageQueue.offer(result);

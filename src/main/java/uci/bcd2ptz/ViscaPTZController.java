@@ -91,7 +91,7 @@ public class ViscaPTZController {
             packet[4] = 0x00;
             packet[5] = 0x00;
             packet[6] = 0x00;
-            packet[7] = (byte) VISCA_SESSION;
+            packet[7] = (byte)(sessionId++ & 0xFF);
 
             // Payload VISCA
             System.arraycopy(viscaPayload, 0, packet, 8, viscaPayload.length);
@@ -195,6 +195,7 @@ public class ViscaPTZController {
      */
     private static byte[] requestPosition() {
 
+
         try {
             byte[] visca = new byte[]{
                     (byte) 0x81,
@@ -215,47 +216,51 @@ public class ViscaPTZController {
             packet[4] = 0x00;
             packet[5] = 0x00;
             packet[6] = 0x00;
-            packet[7] = (byte) VISCA_SESSION;
+            packet[7] = (byte)(sessionId++ & 0xFF);
 
             System.arraycopy(visca, 0, packet, 8, visca.length);
 
             System.out.println("Wysłane VISCA: " + bytesToHex(packet, packet.length));
 
+            //Czyszczenie połaczenia
+            clearViscaInterface();
+            Thread.sleep(50);
+            flushSocket();
+
             // wysyłka
             DatagramPacket dp = new DatagramPacket(packet, packet.length, address, VISCA_PORT);
             socket.send(dp);
 
-            Thread.sleep(20);
+            Thread.sleep(50);
 
             byte[] buffer = new byte[64];
 
 
             // Filtr właściwego response z kamery
-            for (int i = 0; i < 7; i++) {
+            for (int i = 0; i < 15; i++) {
 
                 DatagramPacket response = new DatagramPacket(buffer, buffer.length);
                 socket.receive(response);
 
                 byte[] data = Arrays.copyOf(buffer, response.getLength());
-                System.out.println("Odebrane VISCA: " + bytesToHex(data, packet.length));
 
+                System.out.println("VISCA RX: " + bytesToHex(data, data.length));
 
                 if (data.length < 10) continue;
 
-                // offset (zależny od FF na początku)
                 int offset = (data[0] == (byte) 0xFF) ? 9 : 8;
 
-                // czy to RESPONSE pozycji
-                if (data.length >= offset + 10 &&
-                        (data[offset] & 0xF0) == 0x90 &&
-                        data[offset + 1] == 0x50) {
+                byte type = data[offset + 1];
 
-                    return data; // JEDYNY poprawny case
+                // ✅ RESPONSE (to nas interesuje)
+                if (type == 0x50) {
+                    return data;
                 }
 
-                // opcjonalny debug
-                LOGGER.fine("Ignoruję pakiet VISCA: " + bytesToHex(data, data.length));
+                // debug
+                LOGGER.fine("VISCA ignore type=" + String.format("0x%02X", type));
             }
+
 
             // brak właściwej odpowiedzi
             return null;
@@ -430,43 +435,54 @@ public class ViscaPTZController {
         }
     }
 
-    public static void panAbsolute(int ccValue) throws Exception {
+    public static void panAbsolute(int ccValue) {
 
         synchronized (viscaLock) {
 
-            int center = 64;
-            int diff = ccValue - center;
+            try {
 
-            if (Math.abs(diff) < 1) return;
+                int center = 64;
+                int diff = ccValue - center;
 
-            // ✅ prędkość VISCA
-            byte panSpeed = 0x05;
-            byte tiltSpeed = 0x01;
-            if (Math.abs(diff) == 1) {
-                panSpeed = 0x05;   // wolno
-            } else if (Math.abs(diff) <= 3) {
-                panSpeed = 0x0C;   // średnio
-            } else {
-                panSpeed = 0x15;   // szybko
+                if (Math.abs(diff) < 1) return;
+
+                // prędkość VISCA
+                byte panSpeed;
+                if (Math.abs(diff) == 1) {
+                    panSpeed = 0x03;
+                } else if (Math.abs(diff) <= 3) {
+                    panSpeed = 0x0C;
+                } else {
+                    panSpeed = 0x15;
+                }
+
+                byte tiltSpeed = 0x01;
+
+                int newPan = currentPan + (50 * diff * (-1));
+
+                // wrap
+                newPan = (newPan + 0x10000) % 0x10000;
+
+                // LIMIT
+                if (!isPanInRange(newPan)) {
+                    LOGGER.fine("PAN LIMIT");
+                    return;
+                }
+
+                // ✅ zapamiętaj poprzednią wartość (rollback)
+                int oldPan = currentPan;
+
+                currentPan = newPan;
+
+
+                sendAbsolute(currentPan, currentTilt, panSpeed, tiltSpeed);
+
+            } catch (Exception e) {
+
+                // ✅ cofnięcie stanu przy błędzie (ważne!)
+                LOGGER.log(Level.SEVERE, "PAN ABS ERROR", e);
+
             }
-
-            // ✅ kierunek jako delta pozycji (mały krok, nie velocity!)
-            int direction = (diff > 0) ? 1 : -1;
-
-            int newPan = currentPan + (direction * 200); // mikro przesunięcie
-
-            // ✅ wrap
-            newPan = (newPan + 0x10000) % 0x10000;
-
-            // ✅ LIMIT
-            if (!isPanInRange(newPan)) {
-                LOGGER.fine("PAN LIMIT");
-                return;
-            }
-
-            currentPan = newPan;
-
-            sendAbsolute(currentPan, currentTilt, panSpeed, tiltSpeed);
         }
     }
 
@@ -517,6 +533,47 @@ public class ViscaPTZController {
         panMoving = true;
 
         LOGGER.fine("PAN diff=" + diff + " speed=" + (ps & 0xFF));
+    }
+
+    public static void syncPosition(Runnable onComplete) {
+
+        new Thread(() -> {
+
+            try {
+
+                // ✅ 1. zatrzymaj kamerę
+                stop();
+
+                Thread.sleep(80); // ✅ KLUCZOWE
+
+                byte[] response = null;
+
+                for (int i = 0; i < 5; i++) {
+                    response = requestPosition();
+                    if (response != null) break;
+
+                    Thread.sleep(50); // retry spacing
+                }
+
+                if (response == null) {
+                    System.out.println("SYNC FAIL (no response)");
+                    return;
+                }
+
+                currentPan = parsePan(response);
+                currentTilt = parseTilt(response);
+
+                System.out.println("SYNC OK PAN=" + currentPan + " TILT=" + currentTilt);
+
+                if (onComplete != null) {
+                    onComplete.run();
+                }
+
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+
+        }, "VISCA-SYNC").start();
     }
 
     /**
@@ -692,6 +749,45 @@ public class ViscaPTZController {
 
         t.setDaemon(true);
         t.start();
+    }
+
+    private static void clearViscaInterface() {
+        try {
+            byte[] visca = new byte[] {
+                    (byte) 0x88,
+                    (byte) 0x01,
+                    (byte) 0x00,
+                    (byte) 0x01,
+                    (byte) 0xFF
+            };
+
+            sendViscaCommand(visca);
+
+            System.out.println("VISCA IF_Clear sent");
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static void flushSocket() {
+        try {
+            socket.setSoTimeout(10);
+
+            byte[] buffer = new byte[64];
+            DatagramPacket p = new DatagramPacket(buffer, buffer.length);
+
+            while (true) {
+                socket.receive(p);
+                //System.out.println("FLUSH: " + bytesToHex(buffer, p.getLength()));
+            }
+
+        } catch (Exception ignored) {
+        } finally {
+            try {
+                socket.setSoTimeout(1000);
+            } catch (Exception ignored) {}
+        }
     }
 
 }
