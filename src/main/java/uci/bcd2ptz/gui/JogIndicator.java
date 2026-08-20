@@ -1,22 +1,33 @@
-package uci.bcd2ptz;
+package uci.bcd2ptz.gui;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.awt.geom.AffineTransform;
 
 public class JogIndicator extends JComponent {
 
+    // ================= COMMUNICATION ===================
     private int direction = 0; // -1 = lewo, 1 = prawo, 0 = stop
     private int speed = 0;     // 0–3
     private double angle = 0.0;
 
+
+    private boolean dragging = false;
+    private int startX = 0;
+
+    private java.util.function.BiConsumer<Integer, Integer> onJog;
+    private Runnable onStop;
+
+    // ============ UX params ==================
     private Timer timer = null;
     private long lastUpdateTime = 0;
     private int displaySpeed = 0;
     private long lastSpeedUpdateTime = 0;
     private static final int HOLD_MS = 140;
 
-
+    // ====================== VISUALS =====================
     private static final Color LED_ON = Color.decode("#FFBF00");
     private static final Color LED_OFF = new Color(60, 60, 60);
     private static final Color WHEEL_COLOR = new Color(120, 120, 120);
@@ -44,8 +55,54 @@ public class JogIndicator extends JComponent {
         });
 
         timer.setRepeats(true);
+
+        addMouseListener(new MouseAdapter() {
+
+            @Override
+            public void mousePressed(MouseEvent e) {
+                dragging = true;
+                startX = e.getX();
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                dragging = false;
+
+                if (onStop != null) {
+                    onStop.run();
+                }
+            }
+        });
+
+        addMouseListener(new MouseAdapter() {
+
+            @Override
+            public void mousePressed(MouseEvent e) {
+                dragging = true;
+                startX = e.getX();
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                dragging = false;
+
+                if (onStop != null) {
+                    onStop.run();
+                }
+            }
+        });
+
     }
 
+    // ============== GETTERS & SETTERS
+
+    public void setOnJog(java.util.function.BiConsumer<Integer, Integer> handler) {
+        this.onJog = handler;
+    }
+
+    public void setOnStop(Runnable handler) {
+        this.onStop = handler;
+    }
 
     /**
      * direction: -1 (lewo), 0 (stop), 1 (prawo)
@@ -76,6 +133,8 @@ public class JogIndicator extends JComponent {
 
         repaint();
     }
+
+    // ==================== ViSUALS =======================
 
     @Override
     protected void paintComponent(Graphics g) {

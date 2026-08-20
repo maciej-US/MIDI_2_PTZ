@@ -1,0 +1,78 @@
+{
+  "controllerName": "BCD2PTZ_PANEL",
+
+  "system": {
+
+    "stateRequest": {
+      "description": "Request controller state",
+      "messageType": "cc",
+      "channel": 100,
+      "triggerValue": 127
+    }
+  },
+
+  "input": {
+    "A_PAN": {
+      "panel": "A",
+      "function": "PAN",
+      "type": "jog",
+      "messageType": "cc",
+      "channel": 19,
+      "neutral": 64,
+      "clockwise": 65,
+      "counterClockwise": 63
+    },
+
+    "A_TILT": {
+      "panel": "A",
+      "function": "TILT",
+      "type": "slider",
+      "messageType": "cc",
+      "channel": 11,
+      "range": {
+        "min": 0,
+        "neutral": 64,
+        "max": 127
+      }
+    },
+
+    "A_ZOOM": {
+      "panel": "A",
+      "function": "ZOOM",
+      "type": "slider",
+      "messageType": "cc",
+      "channel": 0,
+      "range": {
+        "min": 0,
+        "max": 127
+      }
+    },
+
+    "A_ABSOLUTE_MODE": {
+      "panel": "A",
+      "function": "ABSOLUTE_MODE",
+      "type": "button",
+      "messageType": "note",
+      "note": 5
+    }
+  },
+
+  "output": {
+    "A_ABSOLUTE_MODE_LED": {
+      "panel": "A",
+      "function": "ABSOLUTE_MODE",
+      "type": "led",
+      "messageType": "cc",
+      "channel": 19,
+      "off": {
+        "value": 0
+      },
+      "blinking": {
+        "value": 65
+      },
+      "on": {
+        "value": 127
+      }
+    }
+  }
+}

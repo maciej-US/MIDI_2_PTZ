@@ -1,4 +1,3 @@
-import uci.bcd2ptz.MidiOutputController;
 //import uci.bcd2ptz.MidiState;
 
 public class ControllerLogic {

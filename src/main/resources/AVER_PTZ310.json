@@ -1,0 +1,292 @@
+{
+
+  "cameraName": "AVER_PTZ310",
+
+    "transport": {
+
+      "packetType": {
+        "size": 2,
+        "offset": 0,
+        "types": {
+          "command": [
+            "01",
+            "00"
+          ],
+          "inquiry": [
+            "01",
+            "10"
+          ],
+          "response": [
+            "01",
+            "11"
+          ]
+        }
+      },
+
+      "payloadSize": {
+        "size": 2,
+        "offset": 2
+      },
+
+      "sequence": {
+        "type": "incremental",
+        "size": 4,
+        "offset": 4
+      },
+
+      "payload":{
+        "offset": 8,
+        "maxSize": 16
+      }
+    },
+
+  "commands": {
+    "absolutePosition": {
+      "type": "command",
+      "description": "Pan/Tilt Drive Absolute Position",
+      "template": [
+        "81",
+        "01",
+        "06",
+        "02",
+        "{panSpeed}",
+        "{tiltSpeed}",
+        "{panPosition}",
+        "{tiltPosition}",
+        "FF"
+      ]
+    },
+    "panTiltPositionRequest": {
+      "type": "inquiry",
+      "description": "Read current PAN/TILT position",
+      "template": [
+        "81",
+        "09",
+        "06",
+        "12",
+        "FF"
+      ],
+      "response": {
+        "type": "panTiltPositionResponse",
+        "template": [
+          "c0",
+          "50",
+          "{panPosition}",
+          "{tiltPosition}",
+          "FF"
+        ]
+      }
+    },
+    "stopPanTilt": {
+      "type": "command",
+      "description": "Stop PAN/TILT movement",
+      "template": [
+        "81",
+        "01",
+        "06",
+        "01",
+        "08",
+        "08",
+        "03",
+        "03",
+        "FF"
+      ]
+    },
+    "movePanTilt": {
+      "type": "command",
+      "description": "Pan/Tilt Drive",
+      "template": [
+        "81",
+        "01",
+        "06",
+        "01",
+        "{panSpeed}",
+        "{tiltSpeed}",
+        "{panDirection}",
+        "{tiltDirection}",
+        "FF"
+      ]
+    }
+  },
+
+  "fields": {
+    "panSpeed": {
+      "description": "PAN speed",
+      "encoding": {
+        "type": "byte"
+      },
+
+      "range": {
+        "min": 1,
+        "max": 24
+      },
+
+      "mapping": {
+
+        "type": "lookup",
+
+        "values": {
+          "01": 0.1,
+          "02": 0.2,
+          "03": 0.5,
+          "04": 0.8,
+          "05": 1.2,
+          "06": 1.8,
+          "07": 2.5,
+          "08": 3.5,
+          "09": 5.0,
+          "0A": 7.0,
+          "0B": 9.5,
+          "0C": 12.5,
+          "0D": 16.0,
+          "0E": 20.0,
+          "0F": 25.0,
+          "10": 31.0,
+          "11": 38.0,
+          "12": 46.0,
+          "13": 55.0,
+          "14": 65.0,
+          "15": 76.0,
+          "16": 88.0,
+          "17": 95.0,
+          "18": 100.0
+        },
+
+        "unit": "degPerSec"
+      },
+
+      "default": "0C"
+    },
+
+    "tiltSpeed": {
+
+      "description": "TILT speed",
+
+      "encoding": {
+        "type": "byte"
+      },
+
+      "range": {
+        "min": 1,
+        "max": 24
+      },
+
+      "mapping": {
+
+        "type": "lookup",
+
+        "values": {
+          "01": 0.1,
+          "02": 0.2,
+          "03": 0.5,
+          "04": 0.8,
+          "05": 1.2,
+          "06": 1.8,
+          "07": 2.5,
+          "08": 3.5,
+          "09": 5.0,
+          "0A": 7.0,
+          "0B": 9.5,
+          "0C": 12.5,
+          "0D": 16.0,
+          "0E": 20.0,
+          "0F": 25.0,
+          "10": 31.0,
+          "11": 38.0,
+          "12": 46.0,
+          "13": 55.0,
+          "14": 65.0,
+          "15": 76.0,
+          "16": 88.0,
+          "17": 95.0,
+          "18": 100.0
+        },
+
+        "unit": "degPerSec"
+      },
+
+      "default": "0C"
+    },
+
+    "panPosition": {
+
+      "description": "PAN position",
+
+      "encoding": {
+        "type": "visca-nibble",
+        "segments": [
+          12,
+          8,
+          4,
+          0
+        ]
+      },
+
+      "mapping": {
+
+        "type": "signed-center",
+
+        "deviceRange": {
+          "negativeLimit": "8A14",
+          "neutral": "0000",
+          "positiveLimit": "762C"
+        },
+
+        "mechanicalRange": {
+          "minDegrees": -170.0,
+          "neutralDegrees": 0.0,
+          "maxDegrees": 170.0
+        },
+
+        "unit": "degree"
+      }
+    },
+
+    "tiltPosition": {
+
+      "description": "TILT position",
+
+      "encoding": {
+        "type": "visca-nibble",
+        "segments": [
+          12,
+          8,
+          4,
+          0
+        ]
+      },
+
+      "mapping": {
+
+        "type": "circular",
+
+        "deviceRange": {
+          "downLimit": "80AE",
+          "neutral": "0000",
+          "upLimit": "7FFF"
+        },
+
+        "controllerRange": {
+          "minDegrees": -30.0,
+          "neutralDegrees": 0.0,
+          "maxDegrees": 90.0
+        },
+
+        "unit": "degree"
+      }
+    },
+
+    "panDirection": {
+      "encoding": {
+        "type": "byte"
+      }
+    },
+
+    "tiltDirection": {
+      "encoding": {
+        "type": "byte"
+      }
+    }
+
+  }
+}

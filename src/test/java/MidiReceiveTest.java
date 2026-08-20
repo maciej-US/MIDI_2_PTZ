@@ -1,5 +1,7 @@
 package uci.bcd2ptz;
 
+import uci.bcd2ptz.midi.MidiEventRouter;
+
 import javax.sound.midi.*;
 import java.util.Scanner;
 import java.util.concurrent.BlockingQueue;

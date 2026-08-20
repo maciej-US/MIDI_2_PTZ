@@ -1,11 +1,6 @@
-import uci.bcd2ptz.ViscaPTZController;
-
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
-import java.util.Arrays;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 public class ViscaUdpTest {
 

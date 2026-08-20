@@ -1,19 +1,29 @@
 package uci.bcd2ptz;
 
-import javax.sound.midi.*;
+import uci.bcd2ptz.gui.JogIndicator;
+import uci.bcd2ptz.gui.VerticalSlider;
+import uci.bcd2ptz.gui.buttonLED;
+
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.ActionEvent;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.BlockingQueue;
-
-import static uci.bcd2ptz.MidiToPTZ.Control.FOCUS;
-import static uci.bcd2ptz.MidiToPTZ.Control.TILT;
 
 public class MainGUI implements Runnable {
 
-    // ==================== GUI ====================
+    /*public void updateControl(MidiToPTZ.UiControl control, int value) {
+    }*/
+
+    //==================== ENUMS & CONSTRAINS =============
+
+    public enum UiControl {
+        TILT,
+        ZOOM,
+        JOG,
+        TILT_MODE_LED
+    }
+
+    // ==================== GUI ELEMTNST====================
 
     private JFrame frame;
     private JComboBox<String> midiComboBox;
@@ -34,7 +44,7 @@ public class MainGUI implements Runnable {
     private final List<Integer> validDeviceIndexes = new ArrayList<>();
 
     private Thread consumerThread;
-    private MidiToPTZ core;
+    private ControlCore core;
 
     // ==================== RUN ====================
 
@@ -74,7 +84,7 @@ public class MainGUI implements Runnable {
         tiltSlider = new VerticalSlider();
         tiltSlider.setPreferredSize(new Dimension(80, 200));
         tiltSlider.setValue(64);
-        tiltSlider.setOnValueChange(value -> core.onGuiTilt(value));
+        tiltSlider.setOnValueChange(value -> core.handleGUITilt(value));
 
         JLabel tiltLabel = new JLabel("TILT", SwingConstants.CENTER);
 
@@ -87,7 +97,7 @@ public class MainGUI implements Runnable {
 
         tiltModeButton.setOnClick(() -> {
             if (core != null) {
-                core.onGuiModeClick(MidiToPTZ.Control.TILT);
+                core.onGuiModeClick(ControlCore.Control.TILT);
             }
         });
 
@@ -96,7 +106,7 @@ public class MainGUI implements Runnable {
         // ==== ZOOM ====
         zoomSlider = new VerticalSlider();
         zoomSlider.setPreferredSize(new Dimension(80, 200));
-        zoomSlider.setOnValueChange(value -> core.onGuiZoom(value));
+        zoomSlider.setOnValueChange(value -> core.handleGUIZoom(value));
 
         JLabel zoomLabel = new JLabel("ZOOM", SwingConstants.CENTER);
 
@@ -138,15 +148,30 @@ public class MainGUI implements Runnable {
 
         frame.setVisible(true);
 
-        updateGUIIndicators(MidiToPTZ.Control.TILT);
+        //updateGUIIndicators(MidiToPTZ.Control.TILT);
+
+        jogIndicator.setOnJog((dir, speed) -> {
+            if (core != null) {
+                core.handleGUIJog(dir, speed);
+            }
+        });
+
+        jogIndicator.setOnStop(() -> {
+            if (core != null) {
+                core.handleGUIJogStop();
+            }
+        });
+
     }
 
     // ====================
     //        MIDI
     // ====================
 
-    public void setCore(MidiToPTZ core) {
+    public void setCore(ControlCore core) {
         this.core = core;
+
+        //updateGUIIndicators(MidiToPTZ.Control.TILT);
     }
 
 
@@ -162,7 +187,7 @@ public class MainGUI implements Runnable {
         SwingUtilities.invokeLater(() -> zoomSlider.setValue(value));
     }
 
-    public void updateJog(int dir, int speed) {
+    public void updateGUIJog(int dir, int speed) {
         SwingUtilities.invokeLater(() -> jogIndicator.setJog(dir, speed));
     }
 
@@ -173,11 +198,13 @@ public class MainGUI implements Runnable {
 
     // ==================== INDICATORS ====================
 
-    private void updateGUIIndicators(MidiToPTZ.Control control) {
+    private void updateGUIIndicators(ControlCore.Control control) {
 
-        MidiToPTZ.ModeState mode = core.getMode(control);
+        if (core == null) {return;}
 
-        if (control == MidiToPTZ.Control.TILT) {
+        ControlCore.ModeState mode = core.getMode(control);
+
+        if (control == ControlCore.Control.TILT) {
             switch (mode) {
                 case JOYSTICK:
                     setTiltModeLed(buttonLED.LedMode.OFF);
@@ -198,11 +225,43 @@ public class MainGUI implements Runnable {
     // ==================== FOCUS (placeholder) ====================
 
 
-    // ==================== UTILS ====================
+    // ==================== CONTROL UPDATES ====================
 
-//    private boolean isNeutral(int value) {
-//        return Math.abs(value - 64) <= 1;
-//    }
+    public void updateGUIControl(UiControl control, int value) {
+
+        SwingUtilities.invokeLater(() -> {
+
+            switch (control) {
+
+                case TILT:
+                    tiltSlider.setValue(value);
+                    break;
+
+                case ZOOM:
+                    zoomSlider.setValue(value);
+                    break;
+
+                case JOG:
+                    int dir = value > 0 ? 1 : -1;
+                    int speed = Math.abs(value);
+                    jogIndicator.setJog(dir, speed);
+                    break;
+            }
+        });
+    }
+
+    public void updateLed(UiControl control, buttonLED.LedMode mode) {
+
+        SwingUtilities.invokeLater(() -> {
+
+            switch (control) {
+
+                case TILT_MODE_LED:
+                    tiltModeButton.setMode(mode);
+                    break;
+            }
+        });
+    }
 
     // ==================== MIDI EVENT ROUTING  ====================
 //    private void handleMidiEvent(MidiEvent event) {

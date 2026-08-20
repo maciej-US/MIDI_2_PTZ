@@ -1,4 +1,4 @@
-package uci.bcd2ptz;
+package uci.bcd2ptz.midi;
 
 import javax.sound.midi.*;
 import java.util.concurrent.BlockingQueue;
@@ -60,6 +60,33 @@ public class MidiEventRouter implements Receiver, Runnable {
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+
+    //============= CONFIGURATION ================
+    public static int findDeviceIndexByName(String name, boolean requireTransmitter) {
+
+        try {
+            MidiDevice.Info[] devices = MidiSystem.getMidiDeviceInfo();
+
+            for (int i = 0; i < devices.length; i++) {
+
+                MidiDevice d = MidiSystem.getMidiDevice(devices[i]);
+
+                boolean valid = requireTransmitter
+                        ? d.getMaxTransmitters() != 0
+                        : d.getMaxReceivers() != 0;
+
+                if (valid && devices[i].getName().contains(name)) {
+                    return i;
+                }
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return -1;
     }
 
     // ===== SINGLETON =====

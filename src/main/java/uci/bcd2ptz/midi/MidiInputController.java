@@ -1,4 +1,4 @@
-package uci.bcd2ptz;
+package uci.bcd2ptz.midi;
 
 import javax.sound.midi.*;
 import java.util.concurrent.BlockingQueue;
