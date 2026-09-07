@@ -1,112 +1,182 @@
 package uci.bcd2ptz;
 
-import uci.bcd2ptz.midi.MidiEventRouter;
-
 import javax.sound.midi.*;
 import java.util.Scanner;
-import java.util.concurrent.BlockingQueue;
 
 public class MidiReceiveTest {
 
     public static void main(String[] args) {
+
         try {
 
-            // ✅ lista urządzeń MIDI
-            MidiDevice.Info[] infos = MidiSystem.getMidiDeviceInfo();
+            MidiDevice.Info[] infos =
+                    MidiSystem.getMidiDeviceInfo();
 
-            System.out.println("Dostępne urządzenia MIDI (INPUT):");
+            System.out.println("Dostępne urządzenia MIDI:");
 
             for (int i = 0; i < infos.length; i++) {
-                MidiDevice dev = MidiSystem.getMidiDevice(infos[i]);
 
-//                if (dev.getMaxTransmitters() != 0) {
-                    System.out.println(i + ": " +
-                            infos[i].getName() + " [" +
-                            infos[i].getDescription() + "]");
-                }
-//            }
+                MidiDevice device =
+                        MidiSystem.getMidiDevice(
+                                infos[i]
+                        );
 
-            // ✅ wybór urządzenia
-            System.out.print("Wybierz indeks urządzenia: ");
-            Scanner scanner = new Scanner(System.in);
-            int index = scanner.nextInt();
+                System.out.println(
+                        i + ": "
+                                + infos[i].getName()
+                                + " ["
+                                + infos[i].getDescription()
+                                + "]  VENDOR: "
+                                + infos[i].getVendor()
+                                + "   VERSION: "
+                                + infos[i].getVersion()
+                                + " TX="
+                                + device.getMaxTransmitters()
 
-            System.out.println("Start nasłuchu MIDI...");
+                );
+            }
 
-            // ✅ Twój listener
-            MidiEventRouter listener = MidiEventRouter.getInstance(index);
+            System.out.print(
+                    "\nWybierz urządzenie: "
+            );
 
-            Thread listenerThread = new Thread(listener, "MIDI-Listener");
-            listenerThread.start();
+            Scanner scanner =
+                    new Scanner(System.in);
 
-            BlockingQueue<String> queue = listener.getParsedQueue();
+            int index =
+                    scanner.nextInt();
 
-            long lastTime = System.currentTimeMillis();
+            MidiDevice device =
+                    MidiSystem.getMidiDevice(
+                            infos[index]
+                    );
 
-            int count = 0;
-            long start = lastTime;
+            device.open();
 
+            System.out.println(
+                    "\nMIDI OPEN: "
+                            + device.getDeviceInfo()
+                            .getName()
+            );
 
-            // ✅ główna pętla testowa
+            final long[] lastEventTime = {
+                    System.currentTimeMillis()
+            };
+
+            final int[] burstCount = {
+                    0
+            };
+
+            final int[] totalCount = {
+                    0
+            };
+
+            Transmitter transmitter =
+                    device.getTransmitter();
+
+            transmitter.setReceiver(
+                    new Receiver() {
+
+                        @Override
+                        public void send(
+                                MidiMessage message,
+                                long timeStamp) {
+
+                            long now =
+                                    System.currentTimeMillis();
+
+                            long delta =
+                                    now - lastEventTime[0];
+
+                            if (delta > 100) {
+
+                                if (burstCount[0] > 0) {
+
+                                    System.out.println(
+                                            "\n=== JOG BURST END ==="
+                                    );
+
+                                    System.out.println(
+                                            "Impulsów: "
+                                                    + burstCount[0]
+                                    );
+
+                                    System.out.println(
+                                            "====================\n"
+                                    );
+                                }
+
+                                burstCount[0] = 0;
+                            }
+
+                            lastEventTime[0] = now;
+
+                            if (!(message instanceof ShortMessage)) {
+                                return;
+                            }
+
+                            ShortMessage sm =
+                                    (ShortMessage) message;
+
+                            totalCount[0]++;
+                            burstCount[0]++;
+
+                            int command =
+                                    sm.getCommand();
+
+                            int channel =
+                                    sm.getChannel();
+
+                            int data1 =
+                                    sm.getData1();
+
+                            int data2 =
+                                    sm.getData2();
+
+                            String type =
+                                    switch (command) {
+
+                                        case ShortMessage.CONTROL_CHANGE ->
+                                                "CC";
+
+                                        case ShortMessage.NOTE_ON ->
+                                                "NOTE_ON";
+
+                                        case ShortMessage.NOTE_OFF ->
+                                                "NOTE_OFF";
+
+                                        default ->
+                                                "OTHER";
+                                    };
+
+                            System.out.printf(
+                                    "#%05d | Δ=%4d ms | BURST=%3d | %s | CH=%d | D1=%3d | D2=%3d%n",
+                                    totalCount[0],
+                                    delta,
+                                    burstCount[0],
+                                    type,
+                                    channel,
+                                    data1,
+                                    data2
+                            );
+                        }
+
+                        @Override
+                        public void close() {
+                        }
+                    }
+            );
+
+            System.out.println(
+                    "\nNasłuch MIDI uruchomiony..."
+            );
+
             while (true) {
-
-                String msg = queue.take();
-
-                long now = System.currentTimeMillis();
-                long delta = now - lastTime;
-                lastTime = now;
-
-                count++;
-
-                // ✅ parsowanie
-                if (msg.startsWith("CC_")) {
-                    String[] p = msg.split("_");
-
-                    int ch = Integer.parseInt(p[1]);
-                    int cc = Integer.parseInt(p[2]);
-                    int val = Integer.parseInt(p[3]);
-
-                    System.out.println(String.format(
-                            "[%4d ms] CC   ch=%d cc=%3d val=%3d",
-                            delta, ch, cc, val
-                    ));
-                }
-
-                else if (msg.startsWith("NOTE_")) {
-                    String[] p = msg.split("_");
-
-                    int ch = Integer.parseInt(p[1]);
-                    int note = Integer.parseInt(p[2]);
-                    int val = Integer.parseInt(p[3]);
-
-                    System.out.println(String.format(
-                            "[%4d ms] NOTE ch=%d note=%3d val=%3d",
-                            delta, ch, note, val
-                    ));
-                }
-
-                else {
-                    System.out.println(String.format(
-                            "[%4d ms] RAW  %s",
-                            delta, msg
-                    ));
-                }
-
-
-
-                /*// ✅ statystyka co 50 wiadomości
-                if (count % 50 == 0) {
-                    long elapsed = now - start;
-                    double rate = (count * 1000.0) / elapsed;
-
-                    System.out.println(String.format(
-                            ">>> RATE: %.1f msg/s (%d msgs)",
-                            rate, count
-                    ));
-                }*/
+                Thread.sleep(1000);
             }
 
         } catch (Exception e) {
+
             e.printStackTrace();
         }
     }

@@ -2,49 +2,40 @@
 
   "cameraName": "AVER_PTZ310",
 
-    "transport": {
+  "transport": {
 
-      "packetType": {
-        "size": 2,
-        "offset": 0,
-        "types": {
-          "command": [
-            "01",
-            "00"
-          ],
-          "inquiry": [
-            "01",
-            "10"
-          ],
-          "response": [
-            "01",
-            "11"
-          ]
-        }
-      },
-
-      "payloadSize": {
-        "size": 2,
-        "offset": 2
-      },
-
-      "sequence": {
-        "type": "incremental",
-        "size": 4,
-        "offset": 4
-      },
-
-      "payload":{
-        "offset": 8,
-        "maxSize": 16
+    "packetType": {
+      "size": 2,
+      "offset": 0,
+      "types": {
+        "command": ["01","00"],
+        "inquiry": ["01","10"],
+        "response": ["01","11"]
       }
     },
+
+    "payloadSize": {
+      "size": 2,
+      "offset": 2
+    },
+
+    "sequence": {
+      "type": "incremental",
+      "size": 4,
+      "offset": 4
+    },
+
+    "payload":{
+      "offset": 8,
+      "maxSize": 16
+    }
+  },
 
   "commands": {
     "absolutePosition": {
       "type": "command",
       "description": "Pan/Tilt Drive Absolute Position",
-      "template": [
+      "commandTemplate": [
         "81",
         "01",
         "06",
@@ -56,31 +47,27 @@
         "FF"
       ]
     },
-    "panTiltPositionRequest": {
-      "type": "inquiry",
-      "description": "Read current PAN/TILT position",
-      "template": [
+
+    "movePanTilt": {
+      "type": "command",
+      "description": "Pan/Tilt Drive",
+      "commandTemplate": [
         "81",
-        "09",
+        "01",
         "06",
-        "12",
+        "01",
+        "{panSpeed}",
+        "{tiltSpeed}",
+        "{panDirection}",
+        "{tiltDirection}",
         "FF"
-      ],
-      "response": {
-        "type": "panTiltPositionResponse",
-        "template": [
-          "c0",
-          "50",
-          "{panPosition}",
-          "{tiltPosition}",
-          "FF"
-        ]
-      }
+      ]
     },
+
     "stopPanTilt": {
       "type": "command",
       "description": "Stop PAN/TILT movement",
-      "template": [
+      "commandTemplate": [
         "81",
         "01",
         "06",
@@ -92,18 +79,249 @@
         "FF"
       ]
     },
-    "movePanTilt": {
+
+    "absoluteZoom": {
       "type": "command",
-      "description": "Pan/Tilt Drive",
-      "template": [
+      "description": "Move zoom to absolute position",
+      "commandTemplate": [
         "81",
         "01",
-        "06",
+        "04",
+        "47",
+        "{zoomPosition}",
+        "FF"
+      ]
+    },
+
+    "exposureCompensation": {
+      "type": "command",
+      "description": "Exposure Compensation Up/Down",
+      "commandTemplate": [
+        "81",
         "01",
-        "{panSpeed}",
-        "{tiltSpeed}",
-        "{panDirection}",
-        "{tiltDirection}",
+        "04",
+        "0E",
+        "{direction}",
+        "FF"
+      ]
+    },
+
+    "exposureGain": {
+      "type": "command",
+      "description": "Exposure Gain Up/Down",
+      "commandTemplate": [
+        "81",
+        "01",
+        "04",
+        "0C",
+        "{direction}",
+        "FF"
+      ]
+    },
+
+    "exposureShutter": {
+      "type": "command",
+      "description": "Exposure Shutter Up/Down",
+      "commandTemplate": [
+        "81",
+        "01",
+        "04",
+        "0A",
+        "{direction}",
+        "FF"
+      ]
+    },
+
+    "exposureIris": {
+      "type": "command",
+      "description": "Exposure Iris Up/Down",
+      "commandTemplate": [
+        "81",
+        "01",
+        "04",
+        "0B",
+        "{direction}",
+        "FF"
+      ]
+    },
+
+    "exposureMode": {
+      "type": "command",
+      "description": "Switch AutoEzposure Mode",
+      "commandTemplate": [
+        "81",
+        "01",
+        "04",
+        "39",
+        "{exposureMode}",
+        "FF"
+      ]
+    },
+
+    "recallPreset": {
+      "type": "command",
+      "description": "Camera preset and special function recall",
+      "commandTemplate": [
+        "81",
+        "01",
+        "04",
+        "3F",
+        "02",
+        "{presetId}",
+        "FF"
+      ]
+    },
+
+    "panTiltPositionRequest": {
+      "type": "inquiry",
+      "description": "Read current PAN/TILT position",
+      "commandTemplate": [
+        "81",
+        "09",
+        "06",
+        "12",
+        "FF"
+      ],
+      "responsetype": "field",
+      "responseTemplate": [
+          "C0",
+          "50",
+          "{panPosition}",
+          "{tiltPosition}",
+          "FF"
+        ]
+    },
+
+    "zoomPosition" : {
+      "type": "inquiry",
+      "description": "Read current ZOOM position",
+      "commandTemplate": [
+        "81",
+        "09",
+        "04",
+        "47",
+        "FF"
+      ],
+      "responsetype": "field",
+      "responseTemplate": [
+        "C0",
+        "50",
+        "{zoomPosition}",
+        "FF"
+      ]
+    },
+
+    "exposureCompensationPosition": {
+      "type": "inquiry",
+      "description": "Exposure Compensation Position Inquiry",
+      "commandTemplate": [
+        "81",
+        "09",
+        "04",
+        "4E",
+        "FF"
+      ],
+      "responsetype" : "field",
+      "responseTemplate": [
+        "10",
+        "50",
+        "00",
+        "00",
+        "{exposureCompensationPosition}",
+        "FF"
+      ]
+    },
+
+    "exposureGainPosition": {
+      "type": "inquiry",
+      "description": "Exposure Gain Position Inquiry",
+      "commandTemplate": [
+        "81",
+        "09",
+        "04",
+        "4C",
+        "FF"
+      ],
+      "responsetype" : "field",
+      "responseTemplate": [
+        "10",
+        "50",
+        "00",
+        "00",
+        "{exposureGainPosition}",
+        "FF"
+      ]
+    },
+
+    "exposureShutterPosition": {
+      "type": "inquiry",
+      "description": "Exposure Shutter Position Inquiry",
+      "commandTemplate": [
+        "81",
+        "09",
+        "04",
+        "4A",
+        "FF"
+      ],
+      "responsetype" : "field",
+      "responseTemplate": [
+        "10",
+        "50",
+        "00",
+        "00",
+        "{exposureShutterPosition}",
+        "FF"
+      ]
+    },
+
+    "exposureIrisPosition": {
+      "type": "inquiry",
+      "description": "Exposure Iris Position Inquiry",
+      "commandTemplate": [
+        "81",
+        "09",
+        "04",
+        "4B",
+        "FF"
+      ],
+      "responsetype" : "field",
+      "responseTemplate": [
+        "10",
+        "50",
+        "00",
+        "00",
+        "{exposureIrisPosition}",
+        "FF"
+      ]
+    },
+
+    "powerStatusRequest": {
+      "type": "inquiry",
+      "description": "Power status inquiry",
+      "commandTemplate": [
+        "81",
+        "09",
+        "04",
+        "00",
+        "FF"
+      ],
+      "responseType": "enum",
+      "responseTemplate":[
+        "10",
+        "50",
+        "{powerStatus}",
+        "FF"
+      ]
+    },
+
+    "interfaceClear": {
+      "type": "command",
+      "description": "VISCA interface clear",
+      "commandTemplate": [
+        "88",
+        "01",
+        "00",
+        "01",
         "FF"
       ]
     }
@@ -122,37 +340,20 @@
       },
 
       "mapping": {
-
-        "type": "lookup",
-
+        "type" : "lookup",
+        "unit": "degPerSec",
         "values": {
-          "01": 0.1,
-          "02": 0.2,
-          "03": 0.5,
-          "04": 0.8,
-          "05": 1.2,
-          "06": 1.8,
-          "07": 2.5,
-          "08": 3.5,
-          "09": 5.0,
-          "0A": 7.0,
-          "0B": 9.5,
-          "0C": 12.5,
-          "0D": 16.0,
-          "0E": 20.0,
-          "0F": 25.0,
-          "10": 31.0,
-          "11": 38.0,
-          "12": 46.0,
-          "13": 55.0,
-          "14": 65.0,
-          "15": 76.0,
-          "16": 88.0,
-          "17": 95.0,
-          "18": 100.0
-        },
-
-        "unit": "degPerSec"
+            "1": 1,
+            "2": 2,
+            "3": 4,
+            "4": 7,
+            "5": 10,
+            "6": 14,
+            "7": 18,
+            "8": 21,
+            "9": 23,
+            "10": 24
+          }
       },
 
       "default": "0C"
@@ -172,9 +373,7 @@
       },
 
       "mapping": {
-
         "type": "lookup",
-
         "values": {
           "01": 0.1,
           "02": 0.2,
@@ -266,7 +465,7 @@
           "upLimit": "7FFF"
         },
 
-        "controllerRange": {
+        "mechanicalRange": {
           "minDegrees": -30.0,
           "neutralDegrees": 0.0,
           "maxDegrees": 90.0
@@ -286,7 +485,316 @@
       "encoding": {
         "type": "byte"
       }
-    }
+    },
 
+    "zoomPosition": {
+
+      "description": "ZOOM position",
+
+      "encoding": {
+        "type": "visca-nibble",
+        "segments": [
+          12,
+          8,
+          4,
+          0
+        ]
+      },
+
+      "mapping": {
+
+        "type": "unsigned",
+        "deviceRange": {
+          "min": "0000",
+          "max": "6F20"
+        },
+        "mechanicalRange": {
+          "min": 0,
+          "max": 21252
+        },
+        "unit": "zoom"
+      }
+    },
+
+    "direction": {
+      "description": "UP and DOWN mappings for exposure parameters",
+      "encoding": {
+        "type": "mapping",
+        "mapping": {
+          "up": 2,
+          "down": 3
+        }
+      }
+    },
+
+    "exposureMode": {
+      "description" : "Auto Exposure mode switching mapping",
+      "type": "unsigned",
+      "encoding": {
+        "type": "mapping",
+        "mapping": {
+          "AUTO": 0,
+          "MANUAL": 3,
+          "SHUTTER_PRIORITY": 10,
+          "IRIS_PRIORITY": 11,
+          "BRIGHT:": 13
+        }
+      }
+    },
+
+    "exposureCompensationPosition": {
+      "description": "Exposure compensation value",
+      "encoding": {
+        "type": "visca-nibble",
+        "segments": [4,0]
+      },
+      "range": {
+        "min": 0,
+        "max": 56
+      },
+
+      "mapping": {
+        "type": "lookup",
+        "mappedMin" : -4,
+        "mappedMax": 4,
+
+        "step": 1,
+
+        "values": {
+          "-4": 0,
+          "-3": 7,
+          "-2": 14,
+          "-1": 21,
+          "0": 28,
+          "1": 35,
+          "2": 42,
+          "3": 49,
+          "4": 56
+        },
+
+        "labels": {
+          "-4": "-4",
+          "-3": "-3",
+          "-2": "-2",
+          "-1": "-1",
+          "0": "0",
+          "1": "+1",
+          "2": "+2",
+          "3": "+3",
+          "4": "+4"
+        }
+      }
+    },
+
+    "exposureGainPosition": {
+      "description" : "Gain position values",
+      "encoding": {
+        "type": "visca-nibble",
+        "segments": [4,0]
+      },
+
+    "range": {
+      "min": 0,
+      "max": 64
+    },
+
+      "mapping": {
+        "type": "lookup",
+        "mappedMin": 0,
+        "mappedMax": 14,
+        "step" : 3,
+        "unit" :"dB",
+
+        "values": {
+          "0": 0,
+          "1": 4,
+          "2": 9,
+          "3": 13,
+          "4": 18,
+          "5": 23,
+          "6": 27,
+          "7": 32,
+          "8": 37,
+          "9": 41,
+          "10": 46,
+          "11": 50,
+          "12": 55,
+          "13": 59,
+          "14": 64
+        },
+
+        "labels": {
+          "0": "0 dB",
+          "1": "3 dB",
+          "2": "6 dB",
+          "3": "9 dB",
+          "4": "12 dB",
+          "5": "15 dB",
+          "6": "18 dB",
+          "7": "21 dB",
+          "8": "24 dB",
+          "9": "27 dB",
+          "10": "30 dB",
+          "11": "33 dB",
+          "12": "36 dB",
+          "13": "39 dB",
+          "14": "42 dB"
+        }
+      }
+    },
+
+    "exposureShutterPosition": {
+      "description": "Shutter speed position",
+      "encoding": {
+        "type": "visca-nibble",
+        "segments": [
+          4,
+          0
+        ]
+      },
+
+      "range": {
+        "min": 0,
+        "max": 64
+      },
+
+      "mapping": {
+        "type": "lookup",
+
+        "mappedMin": 0,
+        "mappedMax": 20,
+
+        "values": {
+          "0": 0,
+          "1": 3,
+          "2": 6,
+          "3": 9,
+          "4": 12,
+          "5": 15,
+          "6": 18,
+          "7": 21,
+          "8": 24,
+          "9": 27,
+          "10": 30,
+          "11": 33,
+          "12": 36,
+          "13": 39,
+          "14": 42,
+          "15": 45,
+          "16": 48,
+          "17": 51,
+          "18": 54,
+          "19": 57,
+          "20": 60,
+          "21": 64
+        },
+
+        "labels": {
+          "0": "1/1",
+          "1": "1/2",
+          "2": "1/4",
+          "3": "1/8",
+          "4": "1/15",
+          "5": "1/30",
+          "6": "1/60",
+          "7": "1/90",
+          "8": "1/100",
+          "9": "1/125",
+          "10": "1/180",
+          "11": "1/250",
+          "12": "1/350",
+          "13": "1/500",
+          "14": "1/725",
+          "15": "1/1000",
+          "16": "1/1500",
+          "17": "1/2000",
+          "18": "1/3000",
+          "19": "1/4000",
+          "20": "1/6000",
+          "21": "1/10K"
+        }
+      }
+    },
+
+    "exposureIrisPosition": {
+      "description": "Iris aperture position",
+
+      "encoding": {
+        "type": "visca-nibble",
+        "segments": [
+          4,
+          0
+        ]
+      },
+
+      "mapping": {
+        "type": "lookup",
+
+        "mappedMin": 0,
+        "mappedMax": 13,
+
+        "values": {
+          "0": 4,
+          "1": 9,
+          "2": 14,
+          "3": 19,
+          "4": 24,
+          "5": 29,
+          "6": 34,
+          "7": 39,
+          "8": 44,
+          "9": 49,
+          "10": 54,
+          "11": 59,
+          "12": 64
+        },
+
+        "labels": {
+          "0": "F14",
+          "1": "F11",
+          "2": "F9.6",
+          "3": "F8.0",
+          "4": "F6.8",
+          "5": "F5.6",
+          "6": "F4.8",
+          "7": "F4.0",
+          "8": "F3.4",
+          "9": "F2.8",
+          "10": "F2.4",
+          "11": "F2.0",
+          "12": "F1.6"
+        }
+      }
+    },
+
+
+    "powerStatus": {
+      "type": "enum",
+      "mapping": {
+        "02": "ON",
+        "03": "OFF"
+      }
+    },
+
+    "presetId": {
+      "type": "uint8",
+
+      "encoding": {
+        "type": "byte"
+      },
+
+      "range": {
+        "min": 0,
+        "max": 255
+      },
+
+      "mapping": {
+        "smartShoot_On": 168,
+        "smartShoot_Off": 169,
+
+        "tally_On": 96,
+        "tally_Off": 97
+      }
+    }
   }
 }

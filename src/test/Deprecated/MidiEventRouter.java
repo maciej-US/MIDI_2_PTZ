@@ -4,6 +4,7 @@ import javax.sound.midi.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
+@Deprecated
 public class MidiEventRouter implements Receiver, Runnable {
 
     public enum OutputMode {

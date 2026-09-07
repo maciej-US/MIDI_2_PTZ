@@ -1,32 +1,32 @@
 {
   "controllerName": "BCD2PTZ_PANEL",
+  "inputDeviceIndex" : 5,
+  "outputDeviceIndex" : 4,
+  "hardwareBlinking" : false,
+  "jogResolution" : 192,
 
-  "system": {
-
-    "stateRequest": {
-      "description": "Request controller state",
-      "messageType": "cc",
-      "channel": 100,
-      "triggerValue": 127
-    }
-  },
-
-  "input": {
-    "A_PAN": {
-      "panel": "A",
-      "function": "PAN",
+  "controls": {
+    "A_JOG": {
       "type": "jog",
+      "mode": "relative",
+      "direction": "input",
       "messageType": "cc",
       "channel": 19,
-      "neutral": 64,
-      "clockwise": 65,
-      "counterClockwise": 63
+      "neutral": 64
     },
 
-    "A_TILT": {
-      "panel": "A",
-      "function": "TILT",
+    "B_JOG": {
+      "type": "jog",
+      "mode": "relative",
+      "direction": "input",
+      "messageType": "cc",
+      "channel": 18,
+      "neutral": 64
+    },
+
+    "A_SPEED": {
       "type": "slider",
+      "direction": "input",
       "messageType": "cc",
       "channel": 11,
       "range": {
@@ -36,10 +36,9 @@
       }
     },
 
-    "A_ZOOM": {
-      "panel": "A",
-      "function": "ZOOM",
+    "A_VOLUME": {
       "type": "slider",
+      "direction": "input",
       "messageType": "cc",
       "channel": 0,
       "range": {
@@ -48,31 +47,228 @@
       }
     },
 
-    "A_ABSOLUTE_MODE": {
-      "panel": "A",
-      "function": "ABSOLUTE_MODE",
+    "A_GAIN": {
+      "type": "knob",
+      "direction": "input",
+      "messageType": "cc",
+      "channel": 6,
+      "range": {
+        "min": 0,
+        "max": 127
+      }
+    },
+
+    "A_EQ_HIGH": {
+      "type": "knob",
+      "direction": "input",
+      "messageType": "cc",
+      "channel": 5,
+      "range": {
+        "min": 0,
+        "max": 127
+      }
+    },
+
+    "A_EQ_MID": {
+      "type": "knob",
+      "direction": "input",
+      "messageType": "cc",
+      "channel": 4,
+      "range": {
+        "min": 0,
+        "max": 127
+      }
+    },
+
+    "A_RELOOP_BUTTON": {
       "type": "button",
+      "direction": "input",
       "messageType": "note",
       "note": 5
-    }
-  },
+    },
 
-  "output": {
-    "A_ABSOLUTE_MODE_LED": {
-      "panel": "A",
-      "function": "ABSOLUTE_MODE",
+    "A_PLAY_BUTTON": {
+      "type": "button",
+      "direction": "input",
+      "messageType": "note",
+      "note": 18
+    },
+
+    "A_CUE_BUTTON": {
+      "type": "button",
+      "direction": "input",
+      "messageType": "note",
+      "note": 19
+    },
+
+    "A_SCRATCH_BUTTON": {
+      "type": "button",
+      "direction": "input",
+      "messageType": "note",
+      "note": 17
+    },
+
+    "A_HIGH_CUT_BUTTON": {
+      "type": "button",
+      "direction": "input",
+      "messageType": "note",
+      "note": 14
+    },
+
+    "A_PLAY_LED": {
       "type": "led",
+      "direction": "output",
+      "messageType": "cc",
+      "channel": 18,
+      "properties": {
+        "states": {
+          "off": 0,
+          "blink": 65,
+          "on": 127
+        }
+      }
+    },
+
+    "A_CUE_LED": {
+      "type": "led",
+      "direction": "output",
+      "messageType": "cc",
+      "channel": 17,
+      "properties": {
+        "states": {
+          "off": 0,
+          "blink": 65,
+          "on": 127
+        }
+      }
+    },
+
+    "A_SCRATCH_LED": {
+      "type": "led",
+      "direction": "output",
       "messageType": "cc",
       "channel": 19,
-      "off": {
-        "value": 0
-      },
-      "blinking": {
-        "value": 65
-      },
-      "on": {
-        "value": 127
+      "properties": {
+        "states": {
+          "off": 0,
+          "blink": 65,
+          "on": 127
+        }
       }
+    },
+
+    "A_RELOOP_LED": {
+      "type": "led",
+      "direction": "output",
+      "messageType": "cc",
+      "channel": 21,
+      "properties": {
+        "states": {
+          "off": 0,
+          "blink": 65,
+          "on": 127
+        }
+      }
+    },
+
+    "A_HIGH_CUT_LED": {
+      "type": "led",
+      "direction": "output",
+      "messageType": "cc",
+      "channel": 22,
+      "properties": {
+        "states": {
+          "off": 0,
+          "blink": 65,
+          "on": 127
+        }
+      }
+    },
+
+    "STATUS_REQUEST": {
+      "type": "request",
+      "direction": "output",
+      "messageType": "cc",
+      "channel": 100,
+      "properties": {
+        "states": {
+          "request": 127
+        }
+      }
+    }
+
+  },
+
+  "bindings": {
+
+    "A_JOG": {
+      "panel" : "A",
+      "action": "PAN"
+    },
+
+    "A_SPEED": {
+      "panel" : "A",
+      "action": "TILT"
+    },
+
+    "A_VOLUME": {
+      "panel" : "A",
+      "action": "ZOOM"
+    },
+
+    "A_GAIN": {
+      "panel" : "A",
+      "action" : "EXPOSURE_COMPENSATION"
+    },
+
+    "A_EQ_HIGH": {
+      "panel" : "A",
+      "action" : "EXPOSURE_IRIS"
+    },
+
+    "A_EQ_MID": {
+      "panel" : "A",
+      "action" : "EXPOSURE_SHUTTER"
+    },
+
+    "A_SCRATCH_BUTTON": {
+      "panel" : "A",
+      "action" : "ABSOLUTE_MODE_KEY"
+    },
+
+    "A_PLAY_BUTTON": {
+      "panel" : "A",
+      "action" : "TALLY_KEY"
+    },
+
+    "A_CUE_BUTTON": {
+      "panel" : "A",
+      "action" : "AUTO_SHOOT_KEY"
+    },
+
+    "A_HIGH_CUT_BUTTON": {
+      "panel" : "A",
+      "action" : "EXPOSURE_MODE_KEY"
+    },
+
+    "A_SCRATCH_LED": {
+      "panel" : "A",
+      "action" : "ABSOLUTE_MODE_INDICATOR"
+    },
+
+    "A_PLAY_LED": {
+      "panel" : "A",
+      "action" : "TALLY_INDICATOR"
+    },
+
+    "A_CUE_LED": {
+      "panel" : "A",
+      "action" : "AUTO_SHOOT_INDICATOR"
+    },
+
+    "A_HIGH_CUT_LED": {
+      "panel" : "A",
+      "action" : "EXPOSURE_MODE_INDICATOR"
     }
   }
 }

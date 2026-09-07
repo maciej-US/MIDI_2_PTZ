@@ -1,3 +1,4 @@
+/*
 package uci.bcd2ptz;
 
 import java.net.DatagramSocket;
@@ -39,9 +40,12 @@ public class PositionCalibrationTest {
                     -30
             };
 
-            /*byte[] response =
-                    requestPosition();*/
-            /*byte[] response = new byte[] { 0, 1 };
+            */
+/*byte[] response =
+                    requestPosition();*//*
+
+            */
+/*byte[] response = new byte[] { 0, 1 };
 
             if (response == null) {
 
@@ -49,7 +53,8 @@ public class PositionCalibrationTest {
                         "Brak odpowiedzi"
                 );
 
-            }*/
+            }*//*
+
 
             System.out.println(
                     bytesToHex(
@@ -98,4 +103,4 @@ public class PositionCalibrationTest {
 
 
 
-}
+}*/

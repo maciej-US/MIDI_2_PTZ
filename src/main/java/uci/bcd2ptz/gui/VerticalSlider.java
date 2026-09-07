@@ -9,8 +9,8 @@ public class VerticalSlider extends JPanel {
 
     private int value = 64; // 0–127
     private boolean joystickMode = false;
-
     private boolean dragging = false;
+    private boolean suppressEvents = false;
 
     // ✅ callback do Core
     private Consumer<Integer> onValueChange;
@@ -21,18 +21,26 @@ public class VerticalSlider extends JPanel {
         addMouseListener(new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
+                if (!isEnabled()){
+                    return;
+                }
                 dragging = true;
                 updateValueFromMouse(e.getY());
             }
 
             @Override
             public void mouseReleased(MouseEvent e) {
+
+                if (!isEnabled()){
+                    return;
+                }
                 dragging = false;
 
-                if (joystickMode) {
-                    setValue(64);
-                    fireValueChanged();
+                if (!joystickMode) {
+                    return;
                 }
+                setValue(64);
+                fireValueChanged();
             }
         });
 
@@ -40,6 +48,9 @@ public class VerticalSlider extends JPanel {
         addMouseMotionListener(new MouseMotionAdapter() {
             @Override
             public void mouseDragged(MouseEvent e) {
+                if (!isEnabled()){
+                    return;
+                }
                 if (dragging) {
                     updateValueFromMouse(e.getY());
                 }
@@ -54,6 +65,9 @@ public class VerticalSlider extends JPanel {
     }
 
     private void fireValueChanged() {
+        if (suppressEvents){
+            return;
+        }
         if (onValueChange != null) {
             onValueChange.accept(value);
         }
@@ -70,7 +84,16 @@ public class VerticalSlider extends JPanel {
 
     public void setJoystickMode(boolean joystickMode) {
         this.joystickMode = joystickMode;
+        if (joystickMode){
+            setValueSilently(64);
+        }
         repaint();
+    }
+
+    public void setValueSilently(int value) {
+        suppressEvents = true;
+        setValue(value);
+        suppressEvents = false;
     }
 
     // ==================== LOGIKA MYSZY ====================
@@ -114,6 +137,10 @@ public class VerticalSlider extends JPanel {
         int top = 15;
         int bottom = height - 15;
 
+        // --- tło ---
+        g2.setColor (new Color(40, 40, 40));
+        g2.fillRect(0,0, getWidth(), getHeight());
+
         // --- tor ---
         g2.setStroke(new BasicStroke(joystickMode ? 3f : 2f));
 
@@ -149,7 +176,7 @@ public class VerticalSlider extends JPanel {
         // --- skala ---
         int scaleX = centerX - 25;
 
-        g2.setColor(new Color(120, 120, 120));
+        g2.setColor(new Color(150, 150, 150));
 
         for (int i = 0; i <= 127; i += 16) {
             int ty = (int) ((bottom - top) * (1 - i / 127.0)) + top;

@@ -1,18 +1,198 @@
 package uci.bcd2ptz;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
+import java.util.List;
+import java.util.Map;
+
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class AppConfig {
 
-    /*
-     * Tymczasowo na sztywno.
-     * Docelowo będą ładowane z JSON.
-     */
+    private SystemConfig system;
 
-    public String midiInputName = "Behringer BCD3000 MIDI IN";
+    private Map<String, Object> user;
 
-    public String midiOutputName = "Behringer BCD3000 MIDI OUT";
+    private Map<String, Object> presets;
 
-    public int midiInputIndex = 4;
+    public SystemConfig getSystem() {
+        return system;
+    }
 
-    public int midiOutputIndex = 5;
+    public void setSystem(SystemConfig system) {
+        this.system = system;
+    }
 
+    public Map<String, Object> getUser() {
+        return user;
+    }
+
+    public void setUser(Map<String, Object> user) {
+        this.user = user;
+    }
+
+    public Map<String, Object> getPresets() {
+        return presets;
+    }
+
+    public void setPresets(Map<String, Object> presets) {
+        this.presets = presets;
+    }
+
+    // ======================================
+    // SYSTEM
+    // ======================================
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class SystemConfig {
+
+        private MidiConfig midi;
+
+        private List<CameraConfig> cameras;
+
+        public MidiConfig getMidi() {
+            return midi;
+        }
+
+        public void setMidi(MidiConfig midi) {
+            this.midi = midi;
+        }
+
+        public List<CameraConfig> getCameras() {
+            return cameras;
+        }
+
+        public void setCameras(List<CameraConfig> cameras) {
+            this.cameras = cameras;
+        }
+    }
+
+    // ======================================
+    // MIDI
+    // ======================================
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class MidiConfig {
+
+        private MidiEndpoint input;
+
+        private MidiEndpoint output;
+
+        public MidiEndpoint getInput() {
+            return input;
+        }
+
+        public void setInput(MidiEndpoint input) {
+            this.input = input;
+        }
+
+        public MidiEndpoint getOutput() {
+            return output;
+        }
+
+        public void setOutput(MidiEndpoint output) {
+            this.output = output;
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class MidiEndpoint {
+
+        private String deviceName;
+
+        private int deviceIndex;
+
+        private String configFile;
+
+        public String getDeviceName() {
+            return deviceName;
+        }
+
+        public void setDeviceName(String deviceName) {
+            this.deviceName = deviceName;
+        }
+
+        public int getDeviceIndex() {
+            return deviceIndex;
+        }
+
+        public void setDeviceIndex(int deviceIndex) {
+            this.deviceIndex = deviceIndex;
+        }
+
+        public String getConfigFile() {
+            return configFile;
+        }
+
+        public void setConfigFile(String configFile) {
+            this.configFile = configFile;
+        }
+    }
+
+    // ======================================
+    // CAMERAS
+    // ======================================
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class CameraConfig {
+
+        private String cameraId;
+
+        private String displayName;
+
+        private String ipAddress;
+
+        private int port;
+
+        private String viscaDefinition;
+
+        private String assignedPanel;
+
+        public String getCameraId() {
+            return cameraId;
+        }
+
+        public void setCameraId(String cameraId) {
+            this.cameraId = cameraId;
+        }
+
+        public String getDisplayName() {
+            return displayName;
+        }
+
+        public void setDisplayName(String displayName) {
+            this.displayName = displayName;
+        }
+
+        public String getIpAddress() {
+            return ipAddress;
+        }
+
+        public void setIpAddress(String ipAddress) {
+            this.ipAddress = ipAddress;
+        }
+
+        public int getPort() {
+            return port;
+        }
+
+        public void setPort(int port) {
+            this.port = port;
+        }
+
+        public String getViscaDefinition() {
+            return viscaDefinition;
+        }
+
+        public void setViscaDefinition(String viscaDefinition) {
+            this.viscaDefinition = viscaDefinition;
+        }
+
+        public String getAssignedPanel() {
+            return assignedPanel;
+        }
+
+        public void setAssignedPanel(String assignedPanel) {
+            this.assignedPanel = assignedPanel;
+        }
+    }
 }

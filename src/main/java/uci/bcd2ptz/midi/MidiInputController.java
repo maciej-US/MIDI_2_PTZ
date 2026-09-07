@@ -4,81 +4,112 @@ import javax.sound.midi.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
-public class MidiInputController implements Receiver, Runnable {
-
-    private static MidiInputController instance;
+public class MidiInputController
+        implements Receiver, Runnable {
 
     private final int deviceIndex;
-    private MidiDevice device;
-    private BlockingQueue<String> messageQueue = new LinkedBlockingQueue<>();
 
-    // PRIVATE CONSTRUCTOR
-    private MidiInputController(int deviceIndex) {
+    private MidiDevice device;
+
+    private final BlockingQueue<MidiEvent> eventQueue =
+            new LinkedBlockingQueue<>();
+
+    public MidiInputController(int deviceIndex) {
+
         this.deviceIndex = deviceIndex;
     }
 
-    // SINGLETON
-    public static synchronized MidiInputController getInstance(int deviceIndex) {
-        if (instance == null) {
-            instance = new MidiInputController(deviceIndex);
-        }
-        return instance;
-    }
 
-    // THREAD START
     @Override
     public void run() {
+
         try {
+
             MidiDevice.Info[] devices = MidiSystem.getMidiDeviceInfo();
 
             device = MidiSystem.getMidiDevice(devices[deviceIndex]);
             device.open();
-
             Transmitter transmitter = device.getTransmitter();
             transmitter.setReceiver(this);
 
-            System.out.println("MidiListener uruchomiony: " + devices[deviceIndex].getName());
+            //DEBUG:
+            //System.out.println("MIDI IN ready: " + devices[deviceIndex].getName());
 
         } catch (Exception e) {
+
             e.printStackTrace();
         }
     }
 
-    // MIDI RECEIVE
     @Override
     public void send(MidiMessage message, long timeStamp) {
-        if (message instanceof ShortMessage) {
-            ShortMessage sm = (ShortMessage) message;
 
-            int command = sm.getCommand();
-            int channel = sm.getChannel() + 1;
-            int data1 = sm.getData1();
-            int data2 = sm.getData2();
+        if (!(message instanceof ShortMessage)) {
+            return;
+        }
 
-            String result = null;
+        ShortMessage sm = (ShortMessage) message;
 
-            if (command == ShortMessage.CONTROL_CHANGE) {
-                result = "CC_" + channel + "_" + data1 + "_" + data2;
-            } else if (command == ShortMessage.NOTE_ON || command == ShortMessage.NOTE_OFF) {
-                result = "NOTE_" + channel + "_" + data1 + "_" + data2;
-            }
+        //DEBUG:
+        //System.out.println("MIDI InputController received: " + message);
 
+        MidiEvent event = null;
 
-            if (result != null) {
-                messageQueue.offer(result);
-            }
+        int channel = sm.getChannel() + 1;
+        int command =sm.getCommand();
+        int number = sm.getData1();
+        int value = sm.getData2();
+
+        if (command == ShortMessage.CONTROL_CHANGE) {
+            event =
+                    new MidiEvent(
+                            MidiEvent.Type.CC,
+                            channel,
+                            number,
+                            value,
+                            Integer.toString(this.deviceIndex)
+                    );
+        }
+
+        else if (
+                command == ShortMessage.NOTE_ON
+                        || command
+                        == ShortMessage.NOTE_OFF) {
+
+            event =
+                    new MidiEvent(
+                            MidiEvent.Type.NOTE,
+                            channel,
+                            number,
+                            value,
+                            Integer.toString(this.deviceIndex)
+                    );
+        }
+
+        if (event != null) {
+
+            eventQueue.offer(event);
+
+            //DEBUG:
+            /*System.out.println(
+                    "QUEUE PUT: "
+                            + event
+            );*/
         }
     }
 
     @Override
     public void close() {
-        if (device != null && device.isOpen()) {
+
+        if (device != null
+                && device.isOpen()) {
+
             device.close();
         }
     }
 
-    // PUBLIC ACCESS TO QUEUE
-    public BlockingQueue<String> getMessageQueue() {
-        return messageQueue;
+    public BlockingQueue<MidiEvent>  getEventQueue() {
+
+        return eventQueue;
     }
 }

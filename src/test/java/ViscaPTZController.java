@@ -231,8 +231,8 @@ public class ViscaPTZController {
         lastPanCommandTime = System.currentTimeMillis();
         panMoving = true;
 
-        //  debug (polecam zostawić)
-        System.out.println("PAN diff=" + diff + " speed=" + (ps & 0xFF));
+        //  debug
+        //System.out.println("PAN diff=" + diff + " speed=" + (ps & 0xFF));
     }
 
     /**

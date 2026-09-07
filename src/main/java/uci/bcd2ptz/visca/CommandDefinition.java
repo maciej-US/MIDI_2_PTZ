@@ -13,7 +13,11 @@ public class CommandDefinition {
 
     private String type;
 
-    private List<String> template;
+    private String responseType;
+
+    private List<String> commandTemplate;
+
+    private List <String> responseTemplate;
 
     public String getDescription() {
         return description;
@@ -23,11 +27,13 @@ public class CommandDefinition {
         this.description = description;
     }
 
-    public List<String> getTemplate() {
-        return template;
+    public List<String> getCommandTemplate() {
+        return commandTemplate;
     }
 
-    public void setTemplate(List<String> template) {
-        this.template = template;
+    public List<String> getResponseTemplate() {return responseTemplate;}
+
+    public void setCommandTemplate(List<String> commandTemplate) {
+        this.commandTemplate = commandTemplate;
     }
 }

@@ -1,0 +1,36 @@
+{
+  "system": {
+    "midi": {
+      "input": {
+        "deviceName": "BCD3000",
+        "deviceIndex": 4,
+        "configFile": "C:/GIT/BCD2PTZ/BCD2PTZ/src/main/resources/BCD3000.json"
+      },
+
+      "output": {
+        "deviceName": "BCD3000",
+        "deviceIndex": 5,
+        "configFile": "C:/GIT/BCD2PTZ/BCD2PTZ/src/main/resources/BCD3000.json"
+      }
+    },
+
+    "cameras": [
+      {
+        "cameraId": "CAM_A",
+        "displayName": "Kamera A",
+        "ipAddress": "100.75.75.100",
+        "port": 52381,
+        "viscaDefinition":"C:/GIT/BCD2PTZ/BCD2PTZ/src/main/resources/AVER_PTZ310.json",
+        "assignedPanel": "A"
+      }
+    ]
+  },
+
+  "user": {
+
+  },
+
+  "presets": {
+
+  }
+}

@@ -4,6 +4,7 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.event.MouseMotionAdapter;
 import java.awt.geom.AffineTransform;
 
 public class JogIndicator extends JComponent {
@@ -12,13 +13,17 @@ public class JogIndicator extends JComponent {
     private int direction = 0; // -1 = lewo, 1 = prawo, 0 = stop
     private int speed = 0;     // 0–3
     private double angle = 0.0;
+    private boolean suppressEvent = false;
+    private boolean joystickMode = true;
 
 
     private boolean dragging = false;
     private int startX = 0;
+    private static final int DEAD_ZONE = 15;
+    private int currentMouseSpeed = 0;
+    private int currentMouseDirection = 0;
 
-    private java.util.function.BiConsumer<Integer, Integer> onJog;
-    private Runnable onStop;
+    private java.util.function.BiConsumer<Integer, Integer> onJogChange;
 
     // ============ UX params ==================
     private Timer timer = null;
@@ -68,45 +73,96 @@ public class JogIndicator extends JComponent {
             public void mouseReleased(MouseEvent e) {
                 dragging = false;
 
-                if (onStop != null) {
-                    onStop.run();
+                currentMouseDirection = 0;
+                currentMouseSpeed = 0;
+
+                if (!suppressEvent && onJogChange != null) {
+                    onJogChange.accept(0, 0);
+                }
+            }
+
+            @Override
+            public void mouseClicked(MouseEvent e) {
+
+                int centerX = getWidth() / 2;
+
+                if (e.getX() > centerX) {
+                    setJog(1, 1);
+
+                    if (onJogChange != null) {
+                        onJogChange.accept(1, 1);
+                    }
+
+                } else {
+                    setJog(-1, 1);
+
+                    if (onJogChange != null) {
+                        onJogChange.accept(-1, 1);
+                    }
                 }
             }
         });
 
-        addMouseListener(new MouseAdapter() {
-
+        addMouseMotionListener(new MouseMotionAdapter() {
             @Override
-            public void mousePressed(MouseEvent e) {
-                dragging = true;
-                startX = e.getX();
-            }
+            public void mouseDragged(MouseEvent e) {
 
-            @Override
-            public void mouseReleased(MouseEvent e) {
-                dragging = false;
+                if (!dragging) {return;}
 
-                if (onStop != null) {
-                    onStop.run();
+                int delta = e.getX() - startX;
+
+                if (Math.abs(delta) < DEAD_ZONE) {
+                    currentMouseDirection = 0;
+                    currentMouseSpeed = 0;
+                    return;
+                }
+
+                currentMouseDirection = delta > 0 ? 1 : -1;
+
+                currentMouseSpeed =Math.min(5, Math.abs(delta) / 20 + 1);
+
+                if (!suppressEvent && onJogChange != null) {
+
+                    onJogChange.accept(
+                            currentMouseDirection,
+                            currentMouseSpeed
+                    );
                 }
             }
+
         });
 
     }
 
-    // ============== GETTERS & SETTERS
+    // ============== API ====================
 
-    public void setOnJog(java.util.function.BiConsumer<Integer, Integer> handler) {
-        this.onJog = handler;
+    public void setOnJogChange(java.util.function.BiConsumer<Integer, Integer> listener) {
+        this.onJogChange = listener;
     }
 
-    public void setOnStop(Runnable handler) {
-        this.onStop = handler;
+    public void setJoystickMode (boolean joystickMode) {
+        this.joystickMode = joystickMode;
+    }
+
+    public void setValueSilently(int value) {
+
+        //DEBUG:
+        //System.out.println ("======= JOG CLASS ========== \n Received VAL = " + value);
+        suppressEvent = true;
+
+        int direction = Integer.compare(value, 0);
+        int speed =Math.abs(value);
+
+        //DEBUG
+        //System.out.println("JOG SILENT dir=" + direction + " speed=" + speed);
+        setJog(direction, speed);
+
+        suppressEvent = false;
     }
 
     /**
      * direction: -1 (lewo), 0 (stop), 1 (prawo)
-     * speed: 0–3
+     * speed: 0–5
      */
     public void setJog(int direction, int speed) {
 
@@ -181,6 +237,9 @@ public class JogIndicator extends JComponent {
         int leftStartX = w / 2 - 70;   // lewa grupa
         int rightStartX = w / 2 + 10;  // prawa grupa
 
+        //kontrola zapalania
+        int ledLevel = getLedLevel(this.speed);
+
         // LEWA
         for (int i = 0; i < 3; i++) {
             int cx = leftStartX + i * (ledWidth + spacing);
@@ -191,15 +250,13 @@ public class JogIndicator extends JComponent {
             tri.addPoint(cx, cy + ledHeight / 2);
             tri.addPoint(cx - ledWidth, cy);
 
-            int level = 3 - i; // ✅ klucz
-
-            if (direction == -1 && speed >= level) {
+            if (direction == -1 && ledLevel >= 3 -i ) {
                 g2.setColor(LED_ON);
             } else {
                 g2.setColor(LED_OFF);
             }
-            g2.fillPolygon(tri);
 
+            g2.fillPolygon(tri);
             g2.setColor(Color.BLACK);
             g2.drawPolygon(tri);
         }
@@ -214,17 +271,29 @@ public class JogIndicator extends JComponent {
             tri.addPoint(cx, cy + ledHeight / 2);      // dół
             tri.addPoint(cx + ledWidth, cy);           // wierzchołek w PRAWO
 
-            if (direction == 1 && speed >= i + 1) {
+            if (direction == 1 && ledLevel >= i + 1) {
                 g2.setColor(LED_ON);
             } else {
                 g2.setColor(LED_OFF);
             }
-            g2.fillPolygon(tri);
 
+            g2.fillPolygon(tri);
             g2.setColor(Color.BLACK);
             g2.drawPolygon(tri);
         }
 
         g2.dispose();
+    }
+
+    /*=========================================
+            ADD-ONS, HELPERS,
+      ========================================= */
+
+    private int getLedLevel(int speed) {
+
+        if (speed <= 0) {return 0;}
+        if (speed == 1) {return 1;}
+        if (speed <= 3) {return 2;}
+        return 3;
     }
 }

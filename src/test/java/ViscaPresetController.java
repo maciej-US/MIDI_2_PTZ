@@ -7,6 +7,7 @@ public class ViscaPresetController {
     private static final String HOST = "100.75.75.100";
     private static final int PORT = 52381;
 
+    @Deprecated
     public static void recallPreset(int preset) {
 
         try {

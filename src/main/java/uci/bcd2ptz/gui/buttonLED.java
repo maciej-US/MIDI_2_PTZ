@@ -21,7 +21,7 @@ public class buttonLED extends JComponent {
     private static final Color LED_ON = Color.decode("#FFBF00");
     private static final Color LED_OFF = new Color(50, 50, 50);
 
-    private static final Color BORDER = new Color(64, 64, 64);
+    private static final Color BORDER = new Color(0, 0, 0);
     private static final Color TEXT = Color.BLACK;
 
     // ===== GLOBALNY BLINK ENGINE =====
@@ -93,6 +93,9 @@ public class buttonLED extends JComponent {
     }
 
     private void fireClick() {
+        if (!isEnabled()){
+            return;
+        }
         if (onClick != null) {
             onClick.run();
         }

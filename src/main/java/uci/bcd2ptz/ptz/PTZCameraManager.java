@@ -1,5 +1,7 @@
 package uci.bcd2ptz.ptz;
 
+import uci.bcd2ptz.visca.ViscaConfig;
+
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -28,14 +30,15 @@ public class PTZCameraManager {
     public PTZCamera addCamera(
             String cameraId,
             String ipAddress,
-            int port,
-            String viscaConfigFile) throws Exception {
+            int cameraPort,
+            int localPort,
+            ViscaConfig config) throws Exception {
 
         PTZCamera camera =
-                new PTZCamera(cameraId, ipAddress, port, viscaConfigFile);
+                new PTZCamera(cameraId, ipAddress, cameraPort, localPort, config);
 
         camera.setIpAddress(ipAddress);
-        camera.setPort(port);
+        camera.setCameraPort(cameraPort);
 
         cameras.put(cameraId, camera);
 
