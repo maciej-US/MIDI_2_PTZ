@@ -82,25 +82,16 @@ public class MidiOutputController {
 
         try {
             ShortMessage msg = new ShortMessage();
-
             msg.setMessage(
                     ShortMessage.CONTROL_CHANGE,
                     0,
                     cc,
                     value
             );
-
-            receiver.send(
-                    msg,
-                    -1
-            );
+            receiver.send(msg, -1);
 
         } catch (Exception e) {
-
-            System.err.println(
-                    "MIDI CC send error"
-            );
-
+            System.err.println("MIDI CC send error");
             e.printStackTrace();
         }
     }
@@ -121,9 +112,7 @@ public class MidiOutputController {
                         note,
                         value
                 );
-
             } else {
-
                 msg.setMessage(
                         ShortMessage.NOTE_OFF,
                         channel,
@@ -132,17 +121,10 @@ public class MidiOutputController {
                 );
             }
 
-            receiver.send(
-                    msg,
-                    -1
-            );
+            receiver.send(msg, -1);
 
         } catch (Exception e) {
-
-            System.err.println(
-                    "MIDI NOTE send error"
-            );
-
+            System.err.println("MIDI NOTE send error");
             e.printStackTrace();
         }
     }
@@ -154,25 +136,18 @@ public class MidiOutputController {
         }
 
         blinkThread = new Thread(() -> {
-
             while (!Thread.currentThread().isInterrupted()) {
                 try {
                     blinkState = !blinkState;
 
                     for (Map.Entry<Integer, Integer> entry : blinkingOutputs.entrySet()) {
-                        sendCC(
-                                entry.getKey(),
-                                blinkState
-                                        ? entry.getValue()
-                                        : 0
-                        );
+                        sendCC(entry.getKey(), blinkState ? entry.getValue() : 0);
                     }
 
-                    Thread.sleep(500);
+                    Thread.sleep(150);
 
                 } catch (InterruptedException e) {
-                    Thread.currentThread()
-                            .interrupt();
+                    Thread.currentThread().interrupt();
                     break;
 
                 } catch (Exception e) {

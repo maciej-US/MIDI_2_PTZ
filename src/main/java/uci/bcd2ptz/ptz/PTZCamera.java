@@ -5,7 +5,6 @@ import uci.bcd2ptz.visca.FieldDefinition;
 import uci.bcd2ptz.visca.ViscaConfig;
 import uci.bcd2ptz.visca.ViscaPTZController;
 
-import java.lang.reflect.Parameter;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -85,10 +84,28 @@ public class PTZCamera {
 
         syncPosition();
 
+        //AUTOMIATION PARAMETERS
+        //---- FOCUS
+        /*ParameterState param = new ParameterState();
+        param.setCurrentState("AUTO");
+        FieldDefinition field = controller.getFieldDefinition("focusPosition");
+        param.setMax(field.getMaxRangeValue());
+        param.setMin(field.getMinRangeValue());
+        this.parameters.put("focus", param);
+        setFocusMode("AUTO");
+
+        field = controller.getFieldDefinition("whiteBalanceModePosition");
+        param = new ParameterState();
+        param.setCurrentState("AUTO");
+        this.parameters.put("whiteBalanceModePosition", param);
+        setWhiteBalanceMode("AUTO");*/
+
+
         //DEBUG:
-       /* System.out.println("============ CAMERA CONSTRUCTOR =============\nPARAMETERS LIST: " + this.parameters.keySet());
-        System.out.println("PAN prameter: " + this.parameters.get("panPosition").toString());
-        System.out.println("TILT prameter: " + this.parameters.get("tiltPosition").toString());*/
+        System.out.println("============ CAMERA CONSTRUCTOR =============\nPARAMETERS LIST: " + this.parameters.keySet());
+        //System.out.println("PAN prameter: " + this.parameters.get("panPosition").toString());
+        //System.out.println("TILT prameter: " + this.parameters.get("tiltPosition").toString());
+        //System.out.println("FOCUS prameter: " + this.parameters.get("focus").toString());
     }
 
     public void touch() {
@@ -114,7 +131,7 @@ public class PTZCamera {
         controller.moveZoomAbsolute(value);
     }
 
-    public void stop() {
+    public void stopPanTilt() {
         controller.stopPanTilt();
     }
 
@@ -125,7 +142,7 @@ public class PTZCamera {
         //        "adjusting " + parameterName + "  Direction = " + direction);
 
         Map<String, Object> params = new HashMap<>();
-        params.put("direction", direction > 0 ? "up" : "down");
+        params.put("direction", direction > 0 ? "UP" : "DOWN");
         controller.executeViscaCommand(parameterName, params);
 
     }
@@ -143,11 +160,125 @@ public class PTZCamera {
     public boolean powerStatusRequest(){
         //DEBUG:
         //System.out.println("Camera " + this.cameraId + " power status request");
-        return controller.powerStatusRequest();
+        controller.parameterInquiry("powerStatus");
+        //DEBUG
+
+        //System.out.println("Camera " + this.cameraId  + " power status " + this.parameters.get("powerStatus"));
+        if (this. parameters.get("powerStatus") == null ||
+                this. parameters.get("powerStatus").getCurrentState() == null){
+            return false;
+        }else {
+            return this.parameters.get("powerStatus").getCurrentState().equalsIgnoreCase("ON");
+        }
     }
 
-    public void executeViscaCommand (String commandName, Map<String, Object> params){
+    public void setWhiteBalanceMode(String mode){
+
+        Map <String, Object> params = new HashMap<>();
+        switch (mode) {
+            case "AUTO":
+                params.put("whiteBalanceMode", "AUTO");
+                break;
+
+            case "MANUAL":
+                params.put("whiteBalanceMode", "MANUAL");
+                break;
+
+            case "ONE_PUSH":
+                params.put("whiteBalanceMode", "ONE_PUSH");
+                break;
+
+            case "INDOOR":
+                params.put("whiteBalanceMode", "INDOOR");
+                break;
+
+            case "OUTDOOR":
+                params.put("whiteBalanceMode", "OUTDOOR");
+                break;
+
+            case "ATW":
+                params.put("whiteBalanceMode", "ATW");
+                break;
+        }
+        executeViscaCommand("whiteBalanceMode", params);
+    }
+
+    public void onePushWBal(){
+        controller.executeViscaCommand("whiteBalanceOnePush");
+    }
+
+    public void setFocusMode(String mode){
+
+        Map <String, Object> params = new HashMap<>();
+        switch (mode) {
+            case "AUTO":
+                params.put("focusMode", "AUTO");
+                break;
+
+            case "MANUAL":
+                params.put("focusMode", "MANUAL");
+                break;
+
+            case "ONE_PUSH":
+                params.put("focusMode", "ONE_PUSH");
+                break;
+        }
+        executeViscaCommand("focusMode", params);
+    }
+
+    public void onePushAutofocus(){
+
+        executeViscaCommand("onePushAutofocus");
+    }
+
+    public void moveFocusAbsolute (int value){
+        controller.moveFocusAbsolute(value);
+    }
+
+    public void setExposureMode (String mode) {
+
+        Map <String, Object> params = new HashMap<>();
+
+        //"00" : "AUTO",
+        //          "03" : "MANUAL",
+        //          "0A" : "SHUTTER_PRIORITY",
+        //          "0B" : "IRIS_PRIORITY",
+        //          "0D" : "BRIGHT"
+        switch (mode) {
+            case "AUTO":
+                params.put("exposureMode", "AUTO");
+                break;
+
+            case "MANUAL":
+                params.put("exposureMode", "MANUAL");
+                break;
+
+            case "SHUTTER_PRIOROTY":
+                params.put("exposureMode", "SHUTTER_PRIORITY");
+                break;
+
+            case "IRIS_PRIOROTY":
+                params.put("exposureMode", "IRIS_PRIORITY");
+                break;
+
+            case "BRIGHT":
+                params.put("exposureMode", "BRIGHT");
+                break;
+        }
+        executeViscaCommand("exposureMode", params);
+
+    }
+
+    //VISCA COMMAND EXECUTION
+
+    private void executeViscaCommand (String commandName, Map<String, Object> params){
+
         controller.executeViscaCommand(commandName, params);
+    }
+
+    private void executeViscaCommand (String commandName){
+
+        controller.executeViscaCommand(commandName);
     }
 
     /*
@@ -159,14 +290,16 @@ public class PTZCamera {
 
         ParameterState parameter = this.parameters.get(parameterName);
 
+        //System.out.println("==== CAMERA ======\nparameter requested: " + parameter.toString());
+
         if (parameter != null) {
             return parameter;
         }
 
         //Pobranie i aktualizacja stanu z kamery jeżeli nie ma w pamięci
 
-        /*//DEBUG
-        System.out.println(parameterName + "Parameter request send");*/
+        //DEBUG
+        //System.out.println(parameterName + "Parameter request send");
         controller.parameterInquiry(parameterName);
 
         //DEBUG

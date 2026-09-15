@@ -31,7 +31,7 @@ public class OnAirIndicator extends JComponent {
         int w = getWidth();
         int h = getHeight();
 
-        Color bgColor =onAir ? new Color(210, 20, 20) : new Color(60, 60, 60);
+        Color bgColor = onAir ? new Color(210, 20, 20) : new Color(60, 60, 60);
         g2.setColor(bgColor);
         g2.fillRoundRect(2, 2, w - 4, h - 4, 12,12);
         g2.setColor(Color.BLACK);

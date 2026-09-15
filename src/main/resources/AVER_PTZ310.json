@@ -93,6 +93,90 @@
       ]
     },
 
+    "absoluteFocus": {
+      "type": "command",
+      "description": "Move focus to absolute position",
+      "commandTemplate": [
+        "81",
+        "01",
+        "04",
+        "48",
+        "{focusPosition}",
+        "FF"
+      ]
+    },
+
+    "moveFocus": {
+      "type": "command",
+      "description": "One push autofocus",
+      "commandTemplate": [
+        "81",
+        "01",
+        "04",
+        "08",
+        "{direction}",
+        "FF"
+      ]
+    },
+
+    "stopFocus" : {
+      "type": "command",
+      "description": "Stop FOCUS movement",
+      "commandTemplate": [
+        "81",
+        "01",
+        "04",
+        "08",
+        "00",
+        "FF"
+      ]
+    },
+
+    "onePushAutofocus" : {
+      "type": "command",
+      "description": "One push autofocus",
+      "commandTemplate": [
+        "81",
+        "01",
+        "04",
+        "18",
+        "01",
+        "FF"
+      ]
+    },
+
+    "focusMode" : {
+      "type": "command",
+      "description": "One push autofocus",
+      "commandTemplate": [
+        "81",
+        "01",
+        "04",
+        "38",
+        "{focusMode}",
+        "FF"
+      ]
+    },
+
+    "focusPosition": {
+      "type": "inquiry",
+      "description": "Focus Position Inquiry",
+      "commandTemplate": [
+        "81",
+        "09",
+        "04",
+        "48",
+        "FF"
+      ],
+      "responsetype" : "enum",
+      "responseTemplate": [
+        "10",
+        "50",
+        "{focusPosition}",
+        "FF"
+      ]
+    },
+
     "exposureCompensation": {
       "type": "command",
       "description": "Exposure Compensation Up/Down",
@@ -154,6 +238,119 @@
         "04",
         "39",
         "{exposureMode}",
+        "FF"
+      ]
+    },
+
+    "whiteBalanceMode": {
+      "type": "command",
+      "description": "Switch White Balance mode",
+      "commandTemplate": [
+        "81",
+        "01",
+        "04",
+        "35",
+        "{whiteBalanceMode}",
+        "FF"
+      ]
+    },
+
+    "whiteBalanceOnePush": {
+      "type": "command",
+      "description": "Trigger One Push white Balance",
+      "commandTemplate": [
+        "81",
+        "01",
+        "04",
+        "10",
+        "05",
+        "FF"
+      ]
+    },
+
+    "whiteBalanceModePosition": {
+      "type": "inquiry",
+      "description": "White balance Mode Position Inquiry",
+      "commandTemplate": [
+        "81",
+        "09",
+        "04",
+        "35",
+        "FF"
+      ],
+      "responsetype" : "enum",
+      "responseTemplate": [
+        "10",
+        "50",
+        "{whiteBalanceModePosition}",
+        "FF"
+      ]
+    },
+
+    "whiteBalanceRGain": {
+      "type": "command",
+      "description": "white balance RED gain set",
+      "commandTemplate": [
+        "81",
+        "01",
+        "04",
+        "03",
+        "{direction}",
+        "FF"
+      ]
+    },
+
+    "whiteBalanceBGain": {
+      "type": "command",
+      "description": "white balance BLUE gain set",
+      "commandTemplate": [
+        "81",
+        "01",
+        "04",
+        "04",
+        "{direction}",
+        "FF"
+      ]
+    },
+
+    "whiteBalanceRGainPosition" : {
+      "type": "inquiry",
+      "description": "White balance RED Gain Position Inquiry",
+      "commandTemplate": [
+        "81",
+        "09",
+        "04",
+        "43",
+        "FF"
+      ],
+      "responsetype" : "field",
+      "responseTemplate": [
+        "10",
+        "50",
+        "00",
+        "00",
+        "{whiteBalanceRGainPosition}",
+        "FF"
+      ]
+    },
+
+    "whiteBalanceBGainPosition" : {
+      "type": "inquiry",
+      "description": "White balance BLUE Gain Position Inquiry",
+      "commandTemplate": [
+        "81",
+        "09",
+        "04",
+        "44",
+        "FF"
+      ],
+      "responsetype" : "field",
+      "responseTemplate": [
+        "10",
+        "50",
+        "00",
+        "00",
+        "{whiteBalanceBGainPosition}",
         "FF"
       ]
     },
@@ -295,7 +492,7 @@
       ]
     },
 
-    "powerStatusRequest": {
+    "powerStatus": {
       "type": "inquiry",
       "description": "Power status inquiry",
       "commandTemplate": [
@@ -305,7 +502,7 @@
         "00",
         "FF"
       ],
-      "responseType": "enum",
+      "responseType": "field",
       "responseTemplate":[
         "10",
         "50",
@@ -333,45 +530,38 @@
       "encoding": {
         "type": "byte"
       },
-
       "range": {
         "min": 1,
         "max": 24
       },
-
       "mapping": {
-        "type" : "lookup",
+        "type": "lookup",
         "unit": "degPerSec",
         "values": {
-            "1": 1,
-            "2": 2,
-            "3": 4,
-            "4": 7,
-            "5": 10,
-            "6": 14,
-            "7": 18,
-            "8": 21,
-            "9": 23,
-            "10": 24
-          }
+          "1": 1,
+          "2": 2,
+          "3": 4,
+          "4": 7,
+          "5": 10,
+          "6": 14,
+          "7": 18,
+          "8": 21,
+          "9": 23,
+          "10": 24
+        }
       },
-
       "default": "0C"
     },
 
     "tiltSpeed": {
-
       "description": "TILT speed",
-
       "encoding": {
         "type": "byte"
       },
-
       "range": {
         "min": 1,
         "max": 24
       },
-
       "mapping": {
         "type": "lookup",
         "values": {
@@ -400,17 +590,13 @@
           "17": 95.0,
           "18": 100.0
         },
-
         "unit": "degPerSec"
       },
-
       "default": "0C"
     },
 
     "panPosition": {
-
       "description": "PAN position",
-
       "encoding": {
         "type": "visca-nibble",
         "segments": [
@@ -420,31 +606,24 @@
           0
         ]
       },
-
       "mapping": {
-
         "type": "signed-center",
-
         "deviceRange": {
           "negativeLimit": "8A14",
           "neutral": "0000",
           "positiveLimit": "762C"
         },
-
         "mechanicalRange": {
           "minDegrees": -170.0,
           "neutralDegrees": 0.0,
           "maxDegrees": 170.0
         },
-
         "unit": "degree"
       }
     },
 
     "tiltPosition": {
-
       "description": "TILT position",
-
       "encoding": {
         "type": "visca-nibble",
         "segments": [
@@ -454,23 +633,18 @@
           0
         ]
       },
-
       "mapping": {
-
         "type": "circular",
-
         "deviceRange": {
           "downLimit": "80AE",
           "neutral": "0000",
           "upLimit": "7FFF"
         },
-
         "mechanicalRange": {
           "minDegrees": -30.0,
           "neutralDegrees": 0.0,
           "maxDegrees": 90.0
         },
-
         "unit": "degree"
       }
     },
@@ -488,9 +662,7 @@
     },
 
     "zoomPosition": {
-
       "description": "ZOOM position",
-
       "encoding": {
         "type": "visca-nibble",
         "segments": [
@@ -500,9 +672,7 @@
           0
         ]
       },
-
       "mapping": {
-
         "type": "unsigned",
         "deviceRange": {
           "min": "0000",
@@ -516,28 +686,73 @@
       }
     },
 
-    "direction": {
-      "description": "UP and DOWN mappings for exposure parameters",
+    "focusPosition": {
+      "description": "FOCUS position",
       "encoding": {
-        "type": "mapping",
-        "mapping": {
-          "up": 2,
-          "down": 3
+        "type": "visca-nibble",
+        "segments": [
+          12,
+          8,
+          4,
+          0
+        ]
+      },
+      "mapping": {
+        "type": "unsigned",
+        "deviceRange": {
+          "min": "404A",
+          "max": "4F02"
+        },
+        "mechanicalRange": {
+          "min": 0,
+          "max": 2814
+        },
+        "mappedMin": 0,
+        "mappedMax": 2814,
+        "unit": "focus"
+      }
+    },
+
+    "focusMode": {
+      "description": "Focus mode mapping",
+      "encoding": {
+        "type": "enum",
+        "mapping" : {
+          "AUTO" : 2,
+          "MANUAL" : 3,
+          "ONE_PUSH" : 1
+        }
+      },
+      "mapping": {
+        "type": "enum",
+        "values" : {
+          "02" : "AUTO",
+          "03" : "MANUAL",
+          "01" : "ONE_PUSH"
         }
       }
     },
 
     "exposureMode": {
-      "description" : "Auto Exposure mode switching mapping",
-      "type": "unsigned",
+      "description": "Auto Exposure mode switching mapping",
       "encoding": {
-        "type": "mapping",
-        "mapping": {
-          "AUTO": 0,
-          "MANUAL": 3,
-          "SHUTTER_PRIORITY": 10,
-          "IRIS_PRIORITY": 11,
-          "BRIGHT:": 13
+        "type": "enum",
+        "mapping" : {
+          "AUTO" : 0,
+          "MANUAL" : 3,
+          "SHUTTER_PRIORITY" : 10,
+          "IRIS_PRIORITY" : 11,
+          "BRIGHT" : 13
+        }
+      },
+      "mapping": {
+        "type": "enum",
+        "values" : {
+          "00" : "AUTO",
+          "03" : "MANUAL",
+          "0A" : "SHUTTER_PRIORITY",
+          "0B" : "IRIS_PRIORITY",
+          "0D" : "BRIGHT"
         }
       }
     },
@@ -546,20 +761,20 @@
       "description": "Exposure compensation value",
       "encoding": {
         "type": "visca-nibble",
-        "segments": [4,0]
+        "segments": [
+          4,
+          0
+        ]
       },
       "range": {
         "min": 0,
         "max": 56
       },
-
       "mapping": {
         "type": "lookup",
-        "mappedMin" : -4,
+        "mappedMin": -4,
         "mappedMax": 4,
-
         "step": 1,
-
         "values": {
           "-4": 0,
           "-3": 7,
@@ -571,40 +786,39 @@
           "3": 49,
           "4": 56
         },
-
         "labels": {
-          "-4": "-4",
-          "-3": "-3",
-          "-2": "-2",
-          "-1": "-1",
-          "0": "0",
-          "1": "+1",
-          "2": "+2",
-          "3": "+3",
-          "4": "+4"
+          "0": "-4",
+          "1": "-3",
+          "2": "-2",
+          "3": "-1",
+          "4": "0",
+          "5": "+1",
+          "6": "+2",
+          "7": "+3",
+          "8": "+4"
         }
       }
     },
 
     "exposureGainPosition": {
-      "description" : "Gain position values",
+      "description": "Gain position values",
       "encoding": {
         "type": "visca-nibble",
-        "segments": [4,0]
+        "segments": [
+          4,
+          0
+        ]
       },
-
-    "range": {
-      "min": 0,
-      "max": 64
-    },
-
+      "range": {
+        "min": 0,
+        "max": 64
+      },
       "mapping": {
         "type": "lookup",
         "mappedMin": 0,
         "mappedMax": 14,
-        "step" : 3,
-        "unit" :"dB",
-
+        "step": 3,
+        "unit": "dB",
         "values": {
           "0": 0,
           "1": 4,
@@ -622,23 +836,22 @@
           "13": 59,
           "14": 64
         },
-
         "labels": {
-          "0": "0 dB",
-          "1": "3 dB",
-          "2": "6 dB",
-          "3": "9 dB",
-          "4": "12 dB",
-          "5": "15 dB",
-          "6": "18 dB",
-          "7": "21 dB",
-          "8": "24 dB",
-          "9": "27 dB",
-          "10": "30 dB",
-          "11": "33 dB",
-          "12": "36 dB",
-          "13": "39 dB",
-          "14": "42 dB"
+          "0": "0",
+          "1": "3",
+          "2": "6",
+          "3": "9",
+          "4": "12",
+          "5": "15",
+          "6": "18",
+          "7": "21",
+          "8": "24",
+          "9": "27",
+          "10": "30",
+          "11": "33",
+          "12": "36",
+          "13": "39",
+          "14": "42"
         }
       }
     },
@@ -652,18 +865,14 @@
           0
         ]
       },
-
       "range": {
         "min": 0,
         "max": 64
       },
-
       "mapping": {
         "type": "lookup",
-
         "mappedMin": 0,
-        "mappedMax": 20,
-
+        "mappedMax": 21,
         "values": {
           "0": 0,
           "1": 3,
@@ -688,9 +897,9 @@
           "20": 60,
           "21": 64
         },
-
+        "unit": "1/s",
         "labels": {
-          "0": "1/1",
+          "0": "1",
           "1": "1/2",
           "2": "1/4",
           "3": "1/8",
@@ -700,8 +909,8 @@
           "7": "1/90",
           "8": "1/100",
           "9": "1/125",
-          "10": "1/180",
-          "11": "1/250",
+          "10": "180",
+          "11": "250",
           "12": "1/350",
           "13": "1/500",
           "14": "1/725",
@@ -711,14 +920,13 @@
           "18": "1/3000",
           "19": "1/4000",
           "20": "1/6000",
-          "21": "1/10K"
+          "21": "10K"
         }
       }
     },
 
     "exposureIrisPosition": {
       "description": "Iris aperture position",
-
       "encoding": {
         "type": "visca-nibble",
         "segments": [
@@ -726,72 +934,200 @@
           0
         ]
       },
-
+      "range": {
+        "min": 0,
+        "max": 64
+      },
       "mapping": {
         "type": "lookup",
-
         "mappedMin": 0,
         "mappedMax": 13,
-
         "values": {
-          "0": 4,
-          "1": 9,
-          "2": 14,
-          "3": 19,
-          "4": 24,
-          "5": 29,
-          "6": 34,
-          "7": 39,
-          "8": 44,
-          "9": 49,
-          "10": 54,
-          "11": 59,
-          "12": 64
+          "0": 0,
+          "1": 4,
+          "2": 9,
+          "3": 14,
+          "4": 19,
+          "5": 24,
+          "6": 29,
+          "7": 34,
+          "8": 39,
+          "9": 44,
+          "10": 49,
+          "11": 54,
+          "12": 59,
+          "13": 64
         },
-
+        "unit": " f",
         "labels": {
-          "0": "F14",
-          "1": "F11",
-          "2": "F9.6",
-          "3": "F8.0",
-          "4": "F6.8",
-          "5": "F5.6",
-          "6": "F4.8",
-          "7": "F4.0",
-          "8": "F3.4",
-          "9": "F2.8",
-          "10": "F2.4",
-          "11": "F2.0",
-          "12": "F1.6"
+          "0": "--",
+          "1": "14",
+          "2": "11",
+          "3": "9.6",
+          "4": "8.0",
+          "5": "6.8",
+          "6": "5.6",
+          "7": "4.8",
+          "8": "4.0",
+          "9": "3.4",
+          "10": "2.8",
+          "11": "2.4",
+          "12": "2.0",
+          "13": "1.6"
         }
       }
     },
 
+    "whiteBalanceRGainPosition": {
+      "description": "White balance RED Gain position",
+      "encoding": {
+        "type": "visca-nibble",
+        "segments": [
+          4,
+          0
+        ]
+      },
+      "range": {
+        "min": 0,
+        "max": 255
+      },
+      "mapping": {
+        "type": "unsigned",
+        "deviceRange": {
+          "min": "00",
+          "max": "FF"
+        },
+        "mechanicalRange": {
+          "min": 0,
+          "max": 255
+        },
+        "mappedMin": 0,
+        "mappedMax": 255,
+        "step" : 4,
+        "unit": "step",
+        "labels": {
+          "0": "0",
+          "1": "127",
+          "2": "255"
+        }
+      }
+    },
+
+    "whiteBalanceBGainPosition": {
+      "description": "White balance BLUE Gain position",
+      "encoding": {
+        "type": "visca-nibble",
+        "segments": [
+          4,
+          0
+        ]
+      },
+      "range": {
+        "min": 0,
+        "max": 255
+      },
+      "mapping": {
+        "type": "unsigned",
+        "deviceRange": {
+          "min": "00",
+          "max": "FF"
+        },
+        "mechanicalRange": {
+          "min": 0,
+          "max": 255
+        },
+        "mappedMin": 0,
+        "mappedMax": 255,
+        "step" : 4,
+        "unit": "step",
+        "labels": {
+          "0": "0",
+          "1": "127",
+          "2": "255"
+        }
+      }
+    },
+
+    "whiteBalanceMode": {
+      "encoding" : {
+        "type": "enum",
+        "mapping": {
+          "AUTO" : 0,
+          "INDOOR" : 1,
+          "OUTDOOR" : 2,
+          "ONE_PUSH" : 3,
+          "ATW" : 4,
+          "MANUAL" : 5
+        }
+      },
+      "mapping" : {
+        "type": "enum",
+        "values": {
+          "00": "AUTO",
+          "01": "INDOOR",
+          "02": "OUTDOOR",
+          "03": "ONE_PUSH",
+          "04": "ATW",
+          "05": "MANUAL"
+        },
+        "labels": {
+          "0": "AUTO",
+          "1": "IND.",
+          "2": "OUT.",
+          "3": "1 PSH",
+          "4": "TRCK",
+          "5": "MAN"
+        }
+      }
+    },
 
     "powerStatus": {
-      "type": "enum",
+      "encoding": {
+        "type": "enum",
+        "mapping": {
+          "ON" : 2,
+          "OFF" : 3
+        }
+      },
       "mapping": {
-        "02": "ON",
-        "03": "OFF"
+        "type": "enum",
+        "values": {
+          "02": "ON",
+          "03": "OFF"
+        }
+      }
+    },
+
+    "direction": {
+      "description": "UP and DOWN mappings for exposure parameters",
+      "encoding" : {
+        "type": "enum",
+        "mapping" : {
+          "UP" : 2,
+          "DOWN" : 3
+        }
+      },
+      "mapping": {
+        "type": "enum",
+        "values" : {
+          "02": "UP",
+          "03": "DOWN"
+        }
       }
     },
 
     "presetId": {
       "type": "uint8",
-
       "encoding": {
         "type": "byte"
       },
-
       "range": {
         "min": 0,
         "max": 255
       },
-
       "mapping": {
         "smartShoot_On": 168,
         "smartShoot_Off": 169,
-
         "tally_On": 96,
         "tally_Off": 97
       }

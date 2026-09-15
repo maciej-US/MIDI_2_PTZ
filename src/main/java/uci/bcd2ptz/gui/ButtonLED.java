@@ -5,7 +5,7 @@ import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
 
-public class buttonLED extends JComponent {
+public class ButtonLED extends JComponent {
 
     // ===== TRYB LED =====
     public enum LedMode {
@@ -26,7 +26,7 @@ public class buttonLED extends JComponent {
 
     // ===== GLOBALNY BLINK ENGINE =====
     private static boolean blinkState = false;
-    private static final List<buttonLED> instances = new ArrayList<>();
+    private static final List<ButtonLED> instances = new ArrayList<>();
 
     static {
         // OKOŁO 3 Hz (zmiana stanu co 166 ms)
@@ -34,7 +34,7 @@ public class buttonLED extends JComponent {
             blinkState = !blinkState;
 
             // repaint tylko tych co migają
-            for (buttonLED b : instances) {
+            for (ButtonLED b : instances) {
                 if (b.mode == LedMode.BLINK) {
                     b.repaint();
                 }
@@ -49,7 +49,7 @@ public class buttonLED extends JComponent {
     private boolean pressed = false;
 
     // ===== KONSTRUKTOR =====
-    public buttonLED(String label) {
+    public ButtonLED(String label) {
         this.label = label;
 
         Dimension fixedSize = new Dimension(45, 40);

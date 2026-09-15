@@ -38,7 +38,9 @@ public class JogIndicator extends JComponent {
     private static final Color WHEEL_COLOR = new Color(120, 120, 120);
 
     public JogIndicator() {
-        setPreferredSize(new Dimension(240, 140));
+        setPreferredSize(new Dimension(200, 180));
+        setMinimumSize(new Dimension(200, 180));
+        setMaximumSize(new Dimension(200, 180));
 
         timer = new Timer(30, e -> {
 

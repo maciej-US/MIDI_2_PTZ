@@ -56,10 +56,4 @@ public class PTZCameraManager {
         return cameras;
     }
 
-
-    public boolean hasCamera(
-            String cameraId) {
-
-        return cameras.containsKey(cameraId);
-    }
 }

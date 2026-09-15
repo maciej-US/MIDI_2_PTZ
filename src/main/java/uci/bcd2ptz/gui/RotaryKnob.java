@@ -20,6 +20,7 @@ public class RotaryKnob extends JComponent {
     private boolean centeredRange;
 
     private Map<String, String> labels;
+    private String unit;
 
     //API
     private boolean suppressEvents;
@@ -34,7 +35,9 @@ public class RotaryKnob extends JComponent {
 
     public RotaryKnob() {
 
-        setPreferredSize(new Dimension(80, 80));
+        setPreferredSize(new Dimension(65, 64));
+        setMaximumSize(new Dimension(65, 64));
+        setMinimumSize(new Dimension(65, 64));
         setOpaque(false);
         this.suppressEvents = false;
 
@@ -121,8 +124,8 @@ public class RotaryKnob extends JComponent {
         int w = getWidth();
         int h = getHeight();
 
-        int centerX = w / 2;
-        int centerY = h / 2;
+        int centerX = w / 2 + 2;
+        int centerY = h / 2 + 2;
 
         int radius = Math.min(w, h) / 2 - 12;
 
@@ -141,12 +144,14 @@ public class RotaryKnob extends JComponent {
 
         if (minValue < 0 && maxValue > 0) {
             // zakres symetryczny wokół zera
-            highlightTick = -minValue;
+            highlightTick = - minValue;
         } else {
             // zakres jednostronny
             highlightTick = -1;
         }
 
+        //ticks limiter
+        steps = steps > 25 ? 21 : steps;
 
         for (int i = 0; i < steps; i++) {
 
@@ -174,18 +179,27 @@ public class RotaryKnob extends JComponent {
 
         if (labels != null && !labels.isEmpty()) {
 
-            //Debug
-            System.out.print("LABELS");
-
-            g2.setColor(new Color(220, 220, 220));
+            g2.setColor(new Color(200, 200, 200));
             g2.setFont(g2.getFont().deriveFont(9f));
 
-            int middleIndex  = steps / 2;
+            int middleIndex = steps / 2;
+            if (labels.size() > 3) {
+                drawScaleLabel(g2, centerX - 9, centerY + 3, radius, 0, labels.get("0"));
+                drawScaleLabel(g2, centerX, centerY - 5, radius, middleIndex, labels.get(String.valueOf(middleIndex)));
+                drawScaleLabel(g2, centerX + 18, centerY, radius, steps, labels.get(String.valueOf(steps - 1)));
+            }else{
+                drawScaleLabel(g2, centerX - 9, centerY + 3, radius, 0, labels.get("0"));
+                drawScaleLabel(g2, centerX, centerY - 5, radius, middleIndex, labels.get("1"));
+                drawScaleLabel(g2, centerX + 18, centerY, radius, steps, labels.get("2"));
+            }
 
-            drawScaleLabel(g2, centerX, centerY, radius, 0, labels.get("0"));
-            drawScaleLabel(g2, centerX, centerY, radius,  middleIndex, labels.get( String.valueOf(middleIndex)));
-            drawScaleLabel(g2, centerX, centerY, radius, steps - 1, labels.get(String.valueOf(steps - 1)));
         }
+        if (this.unit != null) {
+            g2.setColor(new Color(180, 180, 180));
+            g2.setFont(g2.getFont().deriveFont(9f));
+            g2.drawString(this.unit, centerX-4 , h);
+        }
+
 
         // ===== KNOB BODY =====
 
@@ -257,8 +271,9 @@ public class RotaryKnob extends JComponent {
         this.maxValue = (int) field.getMapping().get("mappedMax");
 
         Object labelsObject = field.getMapping().get("labels");
+        this.unit = (String)field.getMapping().get("unit");
 
-        if (labels instanceof Map){
+        if (labelsObject instanceof Map){
             this.labels = (Map<String, String>) labelsObject;
         }
         //konfiguracja zakresu symetryczny/asymetryczny
@@ -267,13 +282,18 @@ public class RotaryKnob extends JComponent {
         repaint();
     }
 
-    private void drawScaleLabel(Graphics2D g2, int centerX, int centerY, int radius, int step, String text) {
+    private void drawScaleLabel(Graphics2D g2, int centerX, int centerY, int radius, int step,  String text) {
 
         if (text == null) {
             return;
         }
 
         int steps = maxValue - minValue + 1;
+
+        //ticks limiter
+        steps = steps > 25 ? 21 : steps;
+
+
 
         double angleDeg = -150.0 + (step * (300.0 / (steps - 1)));
 
@@ -288,7 +308,7 @@ public class RotaryKnob extends JComponent {
 
 
         int textWidth = fm.stringWidth(text);
-        g2.setColor(Color.WHITE);
+        g2.setColor(new Color(180,180,180));
         //g2.setFont(g2.getFont().deriveFont(Font.BOLD, 12f);
 
         g2.drawString(text, x - textWidth / 2, y + 4);

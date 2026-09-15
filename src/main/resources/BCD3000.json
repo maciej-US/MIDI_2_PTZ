@@ -80,6 +80,50 @@
       }
     },
 
+    "A_EQ_LOW": {
+      "type": "knob",
+      "direction": "input",
+      "messageType": "cc",
+      "channel": 3,
+      "range": {
+        "min": 0,
+        "max": 127
+      }
+    },
+
+    "FX_2_PARAM": {
+      "type": "knob",
+      "direction": "input",
+      "messageType": "cc",
+      "channel": 14,
+      "range": {
+        "min": 0,
+        "max": 127
+      }
+    },
+
+    "FX_3_PARAM": {
+      "type": "knob",
+      "direction": "input",
+      "messageType": "cc",
+      "channel": 15,
+      "range": {
+        "min": 0,
+        "max": 127
+      }
+    },
+
+    "FX_4_PARAM": {
+      "type": "knob",
+      "direction": "input",
+      "messageType": "cc",
+      "channel": 16,
+      "range": {
+        "min": 0,
+        "max": 127
+      }
+    },
+
     "A_RELOOP_BUTTON": {
       "type": "button",
       "direction": "input",
@@ -113,6 +157,41 @@
       "direction": "input",
       "messageType": "note",
       "note": 14
+    },
+
+    "A_MID_CUT_BUTTON": {
+      "type": "button",
+      "direction": "input",
+      "messageType": "note",
+      "note": 13
+    },
+
+    "A_LOW_CUT_BUTTON": {
+      "type": "button",
+      "direction": "input",
+      "messageType": "note",
+      "note": 12
+    },
+
+    "A_SEARCH_<<_BUTTON": {
+      "type": "button",
+      "direction": "input",
+      "messageType": "note",
+      "note": 0
+    },
+
+    "A_SEARCH_>>_BUTTON": {
+      "type": "button",
+      "direction": "input",
+      "messageType": "note",
+      "note": 1
+    },
+
+    "KEY_LOCK_BUTTON": {
+      "type": "button",
+      "direction": "input",
+      "messageType": "note",
+      "note": 28
     },
 
     "A_PLAY_LED": {
@@ -185,6 +264,48 @@
       }
     },
 
+    "A_MID_CUT_LED": {
+      "type": "led",
+      "direction": "output",
+      "messageType": "cc",
+      "channel": 23,
+      "properties": {
+        "states": {
+          "off": 0,
+          "blink": 65,
+          "on": 127
+        }
+      }
+    },
+
+    "A_LOW_CUT_LED": {
+      "type": "led",
+      "direction": "output",
+      "messageType": "cc",
+      "channel": 24,
+      "properties": {
+        "states": {
+          "off": 0,
+          "blink": 65,
+          "on": 127
+        }
+      }
+    },
+
+    "KEY_LOCK_LED": {
+      "type": "led",
+      "direction": "output",
+      "messageType": "cc",
+      "channel": 25,
+      "properties": {
+        "states": {
+          "off": 0,
+          "blink": 65,
+          "on": 127
+        }
+      }
+    },
+
     "STATUS_REQUEST": {
       "type": "request",
       "direction": "output",
@@ -231,6 +352,26 @@
       "action" : "EXPOSURE_SHUTTER"
     },
 
+    "A_EQ_LOW": {
+      "panel" : "A",
+      "action" : "FOCUS"
+    },
+
+    "FX_2_PARAM": {
+      "panel" : "A",
+      "action" : "WHITE_BALANCE_R_GAIN"
+    },
+
+    "FX_3_PARAM": {
+      "panel": "A",
+      "action": "WHITE_BALANCE_B_GAIN"
+    },
+
+    "FX_4_PARAM": {
+      "panel" : "A",
+      "action" : "WHITE_BALANCE_MODE"
+    },
+
     "A_SCRATCH_BUTTON": {
       "panel" : "A",
       "action" : "ABSOLUTE_MODE_KEY"
@@ -251,6 +392,31 @@
       "action" : "EXPOSURE_MODE_KEY"
     },
 
+    "A_MID_CUT_BUTTON": {
+      "panel" : "A",
+      "action" : "ONE_PUSH_FOCUS_KEY"
+    },
+
+    "A_LOW_CUT_BUTTON": {
+      "panel" : "A",
+      "action" : "FOCUS_MODE_KEY"
+    },
+
+    "KEY_LOCK_BUTTON": {
+      "panel" : "A",
+      "action" : "ONE_PUSH_WHITE_BALANCE_KEY"
+    },
+
+    "A_SEARCH_<<_BUTTON": {
+      "panel" : "A",
+      "action" : "FOCUS_DOWN_KEY"
+    },
+
+    "A_SEARCH_>>_BUTTON": {
+      "panel" : "A",
+      "action" : "FOCUS_UP_KEY"
+    },
+
     "A_SCRATCH_LED": {
       "panel" : "A",
       "action" : "ABSOLUTE_MODE_INDICATOR"
@@ -269,6 +435,21 @@
     "A_HIGH_CUT_LED": {
       "panel" : "A",
       "action" : "EXPOSURE_MODE_INDICATOR"
+    },
+
+    "A_MID_CUT_LED": {
+      "panel" : "A",
+      "action" : "ONE_PUSH_FOCUS_INDICATOR"
+    },
+
+    "A_LOW_CUT_LED": {
+      "panel" : "A",
+      "action" : "FOCUS_MODE_INDICATOR"
+    },
+
+    "KEY_LOCK_LED": {
+      "panel" : "A",
+      "action" : "WHITE_BALANCE_PUSH_INDICATOR"
     }
   }
 }

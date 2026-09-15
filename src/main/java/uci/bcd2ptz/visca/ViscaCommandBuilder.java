@@ -22,6 +22,10 @@ public class ViscaCommandBuilder {
 
     public byte[] buildCommand(String commandName, Map<String, Object> parameters) {
 
+        //DEBUG
+        //System.out.println("BUILD COMMAND WITH PARAMS: " + commandName);
+        //Thread.dumpStack();
+
         CommandDefinition command =config.getCommands().get(commandName);
 
         if (command == null) {
@@ -39,13 +43,28 @@ public class ViscaCommandBuilder {
 
             String fieldName = extractFieldName(token);
 
+            //DEBUG:
+            /*System.out.println("PARAM KEYS=" + parameters.keySet());
+            System.out.println("LOOKING FOR=" + fieldName);*/
+
             Object value = parameters.get(fieldName);
+
+            //DEBUG:
+            /*System.out.println("COMMAND=" + command.getDescription());
+            System.out.println("TEMPLATE=" + command.getCommandTemplate());
+            System.out.println("PARAMETRS received =" + parameters.toString());
+            System.out.println("FIELD_NAME=" + fieldName);
+            System.out.println("FIELD_VALUE=" + value.toString());*/
+
 
             if (value == null) {
                 throw new IllegalArgumentException("Brak wartości pola: " + fieldName);
             }
 
             FieldDefinition field = config.getFields().get(fieldName);
+
+            //DEBUG:
+            //System.out.println("FIELD NAME =" + fieldName);
 
             if (field == null) {
                 throw new IllegalArgumentException("Brak definicji pola: " + fieldName);
@@ -63,41 +82,38 @@ public class ViscaCommandBuilder {
      */
     public byte[] buildCommand(String commandName) {
 
+        //DEBUG
+        //System.out.println("BUILD COMMAND WITHOUT PARAMS: " + commandName);
+        //Thread.dumpStack();
         return buildCommand(commandName,Map.of());
     }
 
 
     /**
-     * Logika mapowania pakietów VISCA dla ustrawień parametrycznych (PAN, TILT, ZOOM itp).
+     * Logika mapowania pakietów VISCA na podstawie pól JSON.
      */
-    private void encodeField(List<Byte> output, FieldDefinition field, Object value) {
+    private void encodeField(List<Byte> output,
+                             FieldDefinition field,
+                             Object value) {
 
         EncodingDefinition encoding = field.getEncoding();
 
-        if (encoding == null) {
-            throw new IllegalArgumentException( "Brak definicji encoding dla pola");
-        }
-
-        int numericValue;
+        int numericValue = mapValue(field, value);
 
         switch (encoding.getType()) {
+
             case "byte":
-                numericValue = mapValue(field, value);
+            case "enum":
+            case "mapping":
                 output.add((byte) numericValue);
                 break;
 
             case "visca-nibble":
-                numericValue = mapValue(field, value);
                 encodeNibble(output,numericValue,encoding.getSegments());
                 break;
 
-            case "mapping":
-                output.add((byte) resolveMappedValue(encoding, (String) value));
-                break;
-
             default:
-                throw new UnsupportedOperationException("Nieznany typ kodowania: " + encoding.getType()
-                );
+                throw new UnsupportedOperationException("Nieznany typ kodowania: " + encoding.getType());
         }
     }
 
@@ -106,32 +122,57 @@ public class ViscaCommandBuilder {
      */
     private int mapValue(FieldDefinition field, Object value) {
 
-        if (!(value instanceof Number)) {
-            throw new IllegalArgumentException("Pole nie jest liczbą: " + value);
+        EncodingDefinition encoding = field.getEncoding();
+
+        if (encoding == null) {
+            throw new IllegalArgumentException("Brak encoding dla pola");
         }
 
-        if (field.getMapping() == null) {
-            return ((Number) value).intValue();
-        }
+        switch (encoding.getType()) {
 
-        String mappingType = (String) field.getMapping().get("type");
+            case "enum":
+            case "mapping":
+                Object mapped = encoding.getMapping().get(value.toString());
 
-        if (mappingType == null) {
-            return ((Number) value).intValue();
-        }
+                if (mapped == null) {
+                    throw new IllegalArgumentException("Brak mapowania dla: " + value);
+                }
+                return ((Number)mapped).intValue();
 
-        double numeric = ((Number) value).doubleValue();
+            case "byte":
+            case "visca-nibble":
 
-        switch (mappingType) {
+                if (!(value instanceof Number)) {
+                    throw new IllegalArgumentException("Pole nie jest liczbą: " + value);
+                }
 
-            case "signed-center":
-                return mapSignedCenter(numeric, field);
+                if (field.getMapping() == null) {
+                    return ((Number)value).intValue();
+                }
 
-            case "circular":
-                return mapCircular(numeric,field);
+                String mappingType = (String) field.getMapping().get("type");
+
+                if (mappingType == null) {
+                    return ((Number)value).intValue();
+                }
+
+                double numeric = ((Number)value).doubleValue();
+
+                switch (mappingType) {
+                    case "signed-center":
+                        return mapSignedCenter(numeric, field);
+
+                    case "circular":
+                        return mapCircular(numeric, field);
+
+                    default:
+                        return ((Number)value).intValue();
+                }
 
             default:
-                return ((Number) value).intValue();
+                throw new UnsupportedOperationException(
+                        "Nieznany typ kodowania: "
+                                + encoding.getType());
         }
     }
 
@@ -233,7 +274,7 @@ public class ViscaCommandBuilder {
         return result;
     }
 
-    private int resolveMappedValue(EncodingDefinition encoding,String key) {
+    private int resolveMappedValue(EncodingDefinition encoding, String key) {
 
         Object mapped = encoding.getMapping().get(key);
 

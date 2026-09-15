@@ -180,6 +180,11 @@ public class Main {
         gui.setCameraManager(cameraManager);
         new Thread(gui).start();
         core.setGUI(gui);
+        //--synchronizacja stanów
+        while (!gui.isInitialized()){
+            Thread.sleep(50);
+        }
+        core.syncInterface();
 
         // ================= WARN =================
 

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
 import lombok.Getter;
 
+import java.util.List;
 import java.util.Map;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -19,19 +20,41 @@ public class FieldDefinition {
     private String description;
 
     public long getMinRangeValue(){
-        if(range == null){
-            throw new IllegalStateException("Range is not defined for this field.");
+        if(range != null){
+            Object value = range.get("min");
+            return value instanceof Number ? ((Number)value).longValue() : null;
         }
-        Object value = range.get("min");
-        return value instanceof Number ? ((Number)value).longValue() : null;
+
+        if (mapping != null){
+            Object mechanicalRangeObject = mapping.get("mechanicalRange");
+            if (mechanicalRangeObject instanceof Map){
+                Map <?, ?> mechanicalRange = (Map<?,?>) mechanicalRangeObject;
+                Object value = mechanicalRange.get("min");
+                if (value instanceof Number){
+                    return ((Number) value).longValue();
+                }
+            }
+        }
+        throw new IllegalStateException("Range is not defined for this field.");
     }
 
     public long getMaxRangeValue(){
-        if(range == null){
-            throw new IllegalStateException("Range is not defined for this field.");
+        if(range != null){
+            Object value = range.get("max");
+            return value instanceof Number ? ((Number)value).longValue() : null;
         }
-        Object value = range.get("max");
-        return value instanceof Number ? ((Number)value).longValue() : null;
+
+        if (mapping != null){
+            Object mechanicalRangeObject = mapping.get("mechanicalRange");
+            if (mechanicalRangeObject instanceof Map){
+                Map <?, ?> mechanicalRange = (Map<?,?>) mechanicalRangeObject;
+                Object value = mechanicalRange.get("max");
+                if (value instanceof Number){
+                    return ((Number) value).longValue();
+                }
+            }
+        }
+        throw new IllegalStateException("Range is not defined for this field.");
     }
 
     public Integer getMappedValue(String key){

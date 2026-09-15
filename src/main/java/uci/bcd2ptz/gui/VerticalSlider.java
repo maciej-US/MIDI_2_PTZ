@@ -17,6 +17,10 @@ public class VerticalSlider extends JPanel {
 
     public VerticalSlider() {
 
+        setPreferredSize(new Dimension(80, 230));
+        setMinimumSize(new Dimension(80, 230));
+        setMaximumSize(new Dimension(80, 230));
+
         // klik / release
         addMouseListener(new MouseAdapter() {
             @Override

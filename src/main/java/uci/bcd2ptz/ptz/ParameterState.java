@@ -7,4 +7,5 @@ public class ParameterState {
     private double min;
     private double max;
     private double current;
+    private String currentState;
 }
