@@ -1,9 +1,11 @@
 package uci.bcd2ptz.gui;
 
+import uci.bcd2ptz.AppConfig;
 import uci.bcd2ptz.core.ControlCore;
 import uci.bcd2ptz.core.ControlEvent;
 import uci.bcd2ptz.core.ControlEventBus;
 import uci.bcd2ptz.core.ControlEventListener;
+import uci.bcd2ptz.midi.MidiControllerManager;
 import uci.bcd2ptz.ptz.PTZCameraManager;
 import uci.bcd2ptz.visca.FieldDefinition;
 
@@ -11,6 +13,8 @@ import javax.swing.*;
 import java.awt.*;
 
 import static uci.bcd2ptz.core.ControlEvent.EventSource.GUI;
+import static uci.bcd2ptz.core.ControlEvent.EventSource.SYSTEM;
+import static uci.bcd2ptz.gui.ButtonLED.*;
 
 
 public class GUIPanel
@@ -49,7 +53,9 @@ public class GUIPanel
     private final Button focusMoveUpButton = new Button(">>");
     private final Button focusMoveDownButton = new Button("<<");
 
+    //INDICATORS
     private final OnAirIndicator onAirIndicator = new OnAirIndicator();
+    private Dseg14Display midiPanelInfo = null;
 
     //==================== VISUAL CONSTANSTS =================
     Color labelColor = new Color(200, 200, 200);
@@ -57,14 +63,17 @@ public class GUIPanel
 
     // ==================== CORE INTERFACE ====================
 
-    private ControlEventBus outputBus;
-    private PTZCameraManager cameraManager;
+    private final ControlEventBus outputBus;
+    private final PTZCameraManager cameraManager;
+    private final MidiControllerManager midiManager;
     ControlCore.ControlPanelId panelId;
     private volatile boolean initialized = false;
+    private final AppConfig appConfig;
+
 
     //============ CONSTRUCTOR ===================
 
-    public GUIPanel(ControlCore.ControlPanelId panelId, ControlEventBus outputBus,  PTZCameraManager cameraManger) {
+    public GUIPanel(ControlCore.ControlPanelId panelId, ControlEventBus outputBus,  PTZCameraManager cameraManger, MidiControllerManager midiManager, AppConfig appConfig) {
 
         super (new GridBagLayout());
 
@@ -72,19 +81,14 @@ public class GUIPanel
         //System.out.println("GUIPanel " + panelId + " constructor");
 
         this.cameraManager = cameraManger;
+        this.midiManager = midiManager;
         this.panelId = panelId;
         this.outputBus = outputBus;
+        this.appConfig = appConfig;
 
         initialize();
     }
 
-
-    // ==================== RUN ====================
-
-    /*@Override
-    public void run() {
-        SwingUtilities.invokeLater(this::initialize);
-    }*/
 
     // ====================
     //        INIT
@@ -106,9 +110,8 @@ public class GUIPanel
             ControlEvent event =
                     new ControlEvent(
                             GUI,
-                            "EXPOSURE_MODE_KEY",
-                            ControlCore.ControlPanelId.A,
-                            "EXPOSURE_MODE_KEY",
+                            panelId,
+                            "EXPOSURE_MODE",
                             1
                     );
             outputBus.publish(event);
@@ -124,8 +127,7 @@ public class GUIPanel
                 value -> {
                     ControlEvent event = new ControlEvent(
                             GUI,
-                            "EXPOSURE_IRIS",
-                            ControlCore.ControlPanelId.A,
+                            panelId,
                             "EXPOSURE_IRIS",
                             value
                     );
@@ -146,8 +148,7 @@ public class GUIPanel
                 value -> {
                     ControlEvent event = new ControlEvent(
                             GUI,
-                            "EXPOSURE_SHUTTER",
-                            ControlCore.ControlPanelId.A,
+                            panelId,
                             "EXPOSURE_SHUTTER",
                             value
                     );
@@ -169,8 +170,7 @@ public class GUIPanel
                 value -> {
                     ControlEvent event = new ControlEvent(
                             GUI,
-                            "EXPOSURE_COMPENSATION",
-                            ControlCore.ControlPanelId.A,
+                            panelId,
                             "EXPOSURE_COMPENSATION",
                             value
                     );
@@ -194,14 +194,13 @@ public class GUIPanel
                 value -> {
                     ControlEvent event = new ControlEvent(
                             GUI,
-                            "WHITE_BALANCE_MODE",
-                            ControlCore.ControlPanelId.A,
+                            panelId,
                             "WHITE_BALANCE_MODE",
                             value
                     );
 
                     //DEBUG:
-                    System.out.println("WHITE BALANCE MODE EVENT: "+ event.toString());
+                    //System.out.println("WHITE BALANCE MODE EVENT: "+ event);
 
                     outputBus.publish(event);
                 }
@@ -217,8 +216,7 @@ public class GUIPanel
             ControlEvent event =
                     new ControlEvent(
                             GUI,
-                            "ONE_PUSH_WHITE_BALANCE_KEY",
-                            ControlCore.ControlPanelId.A,
+                            panelId,
                             "ONE_PUSH_WHITE_BALANCE_KEY",
                             1
                     );
@@ -234,8 +232,7 @@ public class GUIPanel
                 value -> {
                     ControlEvent event = new ControlEvent(
                             GUI,
-                            "WHITE_BALANCE_B_GAIN",
-                            ControlCore.ControlPanelId.A,
+                            panelId,
                             "WHITE_BALANCE_B_GAIN",
                             value
                     );
@@ -257,8 +254,7 @@ public class GUIPanel
                 value -> {
                     ControlEvent event = new ControlEvent(
                             GUI,
-                            "WHITE_BALANCE_R_GAIN",
-                            ControlCore.ControlPanelId.A,
+                            panelId,
                             "WHITE_BALANCE_R_GAIN",
                             value
                     );
@@ -282,8 +278,7 @@ public class GUIPanel
                     ControlEvent event =
                             new ControlEvent(
                                     GUI,
-                                    "TILT",
-                                    ControlCore.ControlPanelId.A,
+                                    panelId,
                                     "TILT",
                                     value
                             );
@@ -307,8 +302,7 @@ public class GUIPanel
                     ControlEvent event =
                             new ControlEvent(
                                     GUI,
-                                    "ZOOM",
-                                    ControlCore.ControlPanelId.A,
+                                    panelId,
                                     "ZOOM",
                                     value
                             );
@@ -334,8 +328,7 @@ public class GUIPanel
                     ControlEvent event =
                             new ControlEvent(
                                     GUI,
-                                    "FOCUS",
-                                    ControlCore.ControlPanelId.A,
+                                    panelId,
                                     "FOCUS",
                                     value
                             );
@@ -351,15 +344,11 @@ public class GUIPanel
         focusLabel.setForeground(labelColor);
 
         // ---- FOCUS UP Button
-        /*focusMoveUpButton.setPreferredSize(new Dimension(40, 20));
-        focusMoveUpButton.setMinimumSize(new Dimension(40, 20));
-        focusMoveUpButton.setMaximumSize(new Dimension(40, 20));*/
         focusMoveUpButton.setOnClick(() -> {
             ControlEvent event =
                     new ControlEvent(
                             GUI,
-                            "FOCUS_UP_KEY",
-                            ControlCore.ControlPanelId.A,
+                            panelId,
                             "FOCUS_UP_KEY",
                             1
                     );
@@ -370,15 +359,11 @@ public class GUIPanel
         });
 
         // ---- FOCUS DOWN Button
-        /*focusMoveDownButton.setPreferredSize(new Dimension(40, 20));
-        focusMoveDownButton.setMinimumSize(new Dimension(40, 20));
-        focusMoveDownButton.setMaximumSize(new Dimension(40, 20));*/
         focusMoveDownButton.setOnClick(() -> {
             ControlEvent event =
                     new ControlEvent(
                             GUI,
-                            "FOCUS_DOWN_KEY",
-                            ControlCore.ControlPanelId.A,
+                            panelId,
                             "FOCUS_DOWN_KEY",
                             1
                     );
@@ -388,21 +373,19 @@ public class GUIPanel
             outputBus.publish(event);
         });
 
+        focusOnePushButton.setMode(LedMode.OFF);
         focusOnePushButton.setOnClick(() -> {
             ControlEvent event =
                     new ControlEvent(
                             GUI,
-                            "ONE_PUSH_FOCUS_KEY",
-                            ControlCore.ControlPanelId.A,
+                            panelId,
                             "ONE_PUSH_FOCUS_KEY",
                             1
                     );
             //DEBUG:
-            System.out.println("PUBLISH: " + event.getAction() + "  source = " + event.getEventSource());
-
+            //System.out.println("PUBLISH: " + event.getAction() + "  source = " + event.getEventSource());
             outputBus.publish(event);
         });
-
 
         // ==== JOG ====
         jogIndicator = new JogIndicator();
@@ -411,8 +394,7 @@ public class GUIPanel
                     ControlEvent event =
                             new ControlEvent(
                                     GUI,
-                                    "GUI_JOG_A",
-                                    ControlCore.ControlPanelId.A,
+                                    panelId,
                                     "PAN",
                                     value
                             );
@@ -427,9 +409,8 @@ public class GUIPanel
             ControlEvent event =
                     new ControlEvent(
                             GUI,
-                            "AUTO_SHOOT_KEY",
-                            ControlCore.ControlPanelId.A,
-                            "AUTO_SHOOT_KEY",
+                            panelId,
+                            "AUTO_FOLLOW",
                             1
                     );
             //DEBUG:
@@ -439,13 +420,13 @@ public class GUIPanel
         });
 
         // ---- FOCUS MODE Button
+        focusModeButton.setMode(LedMode.ON);
         focusModeButton.setOnClick(() -> {
             ControlEvent event =
                     new ControlEvent(
                             GUI,
-                            "FOCUS_MODE_KEY",
-                            ControlCore.ControlPanelId.A,
-                            "FOCUS_MODE_KEY",
+                            panelId,
+                            "FOCUS_MODE",
                             1
                     );
             //DEBUG:
@@ -459,9 +440,8 @@ public class GUIPanel
             ControlEvent event =
                     new ControlEvent(
                             GUI,
-                            "ABSOLUTE_MODE_KEY",
-                            ControlCore.ControlPanelId.A,
-                            "ABSOLUTE_MODE_KEY",
+                            panelId,
+                            "PTZ_MODE",
                             1
                     );
 
@@ -471,10 +451,16 @@ public class GUIPanel
         });
 
 
-        //=========== ON AIR Indicator
+        //=========== INFO PANEL elements
+
+        //--- ON AIR indicator
         onAirIndicator.setPreferredSize(new Dimension(80, 30));
         onAirIndicator.setMaximumSize(new Dimension(80, 30));
         onAirIndicator.setMinimumSize(new Dimension(80, 30));
+
+        //--- MIDI Panel indicatori
+        midiPanelInfo = new Dseg14Display(appConfig.getSystem().getGuiConstraints().getLcdFontPath());
+        midiPanelInfo.setValue(String.valueOf(midiManager.getMidiBinding(panelId)));
 
         //==================================
         //             MAIN LAYOUT
@@ -707,6 +693,21 @@ public class GUIPanel
         upperPanelGBC.gridheight = 3;
         upperPanel.add(focusPanel, upperPanelGBC);
 
+        // ======== STATUS PANEL COMPOSITION
+        JPanel statusPanel = new JPanel(new GridBagLayout());
+        statusPanel.setBackground(backgroundColor);
+        GridBagConstraints statusPanelGBC = new GridBagConstraints();
+        statusPanelGBC.fill = GridBagConstraints.NONE;
+        statusPanelGBC.insets = new Insets(0, 6, 0, 6);
+
+        // --- MIDI panel indicator ===> STATUS PANEL
+        statusPanelGBC.gridx = 0;
+        statusPanel.add(midiPanelInfo, statusPanelGBC);
+
+        //---  ON AIR indicator ===> STATUS PANEL
+        statusPanelGBC.gridx = 1;
+        statusPanel.add(onAirIndicator, statusPanelGBC);
+
 
         //====== CENTRAL PANEL COMPOSITION
 
@@ -720,9 +721,9 @@ public class GUIPanel
         centralPanelGBC.gridy = 0;
         centralPanel.add(buttonsPanel, centralPanelGBC);
 
-        // ------ ON-AIR indicator ===> CENTRAL PANEL
+        // ------ STATUS PANEL indicator ===> CENTRAL PANEL
         centralPanelGBC.gridy = 1;
-        centralPanel.add(onAirIndicator, centralPanelGBC);
+        centralPanel.add(statusPanel, centralPanelGBC);
 
         //---- Jog component ==> CENTRAL PANEL
         centralPanelGBC.gridy = 2;
@@ -797,16 +798,24 @@ public class GUIPanel
     @Override
     public void onControlEvent(ControlEvent event) {
 
+        if (event.getPanel() != panelId){
+            return;
+        }
+
         SwingUtilities.invokeLater(() -> handleControlEvent(event));
     }
 
     public void handleControlEvent(ControlEvent event) {
 
         //DEBUG
-        System.out.println("======= GUI panel " + panelId + " ============= \n->EVENT from: " + event.getEventSource() +
-                "CONTROL ID = " + event.getControlID() + " PANEL: " + event.getPanel() + "   VALUE = " + event.getValue());
+       /* System.out.println("======= GUI panel " + panelId + " ============= \n->EVENT from: " + event.getEventSource() +
+                "  ACTION = " + event.getAction() + " PANEL: " + event.getPanel() + "   VALUE = " + event.getValue());*/
 
         if (!initialized) {
+            return;
+        }
+
+        if (event.getEventSource() != SYSTEM){
             return;
         }
 
@@ -831,9 +840,6 @@ public class GUIPanel
                     break;
 
                 case "EXPOSURE_COMPENSATION":
-                    exposureCompensationKnob.setValueSilently(event.getValue());
-                    break;
-
                 case "EXPOSURE_GAIN":
                     exposureCompensationKnob.setValueSilently(event.getValue());
                     break;
@@ -866,7 +872,7 @@ public class GUIPanel
                     handleAbsoluteModeStatus(event.getValue());
                     break;
 
-                case "AUTO_SHOOT_INDICATOR":
+                case "AUTO_FOLLOW_INDICATOR":
                     handleAutoFollowStatus(event.getValue());
                     break;
 
@@ -874,20 +880,33 @@ public class GUIPanel
                     handleExposureModeStatus(event.getValue());
                     break;
 
+                case "ONE_PUSH_FOCUS_INDICATOR":
+                    focusOnePushButton.setMode(
+                        switch (event.getValue()) {
+                            case 1 -> LedMode.ON;
+                            case 2 -> LedMode.BLINK;
+                            default -> LedMode.OFF;
+                        });
+
                 case "FOCUS_MODE_INDICATOR":
                     handleFocusMode(event.getValue());
                     break;
 
                 case "TALLY_INDICATOR":
-                    if (event.getValue() == 1) {
-                        onAirIndicator.setOnAir(true);
-                    } else {
-                        onAirIndicator.setOnAir(false);
-                    }
+                    onAirIndicator.setOnAir(event.getValue() == 1);
+                    break;
+
+                //IGNORED EVENTS
+                case "CAM_SELECT_1_INDICATOR":
+                case "CAM_SELECT_2_INDICATOR":
+                case "CAM_SELECT_3_INDICATOR":
+                case "CAM_SELECT_4_INDICATOR":
+                case "PANEL_SELECT_INDICATOR":
+
                     break;
 
                 default:
-                    System.out.println("Unhandled event: " + event);
+                    System.out.println("GUI => Unhandled event: " + event);
             }
         });
     }
@@ -897,7 +916,6 @@ public class GUIPanel
     // ====================
 
     // =========== CONTROL ELEMENTS UPDATE =================
-
 
     public void updateWBModeSwitch(int value) {
 
@@ -919,19 +937,19 @@ public class GUIPanel
         switch (state) {
 
             case 0:
-                PTZModeButton.setMode(ButtonLED.LedMode.OFF);
+                PTZModeButton.setMode(LedMode.OFF);
                 tiltSlider.setJoystickMode(true);
                 jogIndicator.setJoystickMode(true);
                 break;
 
             case 1:
-                PTZModeButton.setMode(ButtonLED.LedMode.ON);
+                PTZModeButton.setMode(LedMode.ON);
                 tiltSlider.setJoystickMode(false);
                 jogIndicator.setJoystickMode(false);
                 break;
 
             case 2:
-                PTZModeButton.setMode(ButtonLED.LedMode.BLINK);
+                PTZModeButton.setMode(LedMode.BLINK);
                 tiltSlider.setJoystickMode(true);
                 jogIndicator.setJoystickMode(false);
                 break;
@@ -942,14 +960,14 @@ public class GUIPanel
 
         switch (state) {
             case 0:
-                autoFollowModeButton.setMode(ButtonLED.LedMode.OFF);
+                autoFollowModeButton.setMode(LedMode.OFF);
                 tiltSlider.setEnabled(true);
                 zoomSlider.setEnabled(true);
                 PTZModeButton.setEnabled(true);
                 break;
 
             case 1:
-                autoFollowModeButton.setMode(ButtonLED.LedMode.ON);
+                autoFollowModeButton.setMode(LedMode.ON);
                 tiltSlider.setEnabled(false);
                 zoomSlider.setEnabled(false);
                 PTZModeButton.setEnabled(false);
@@ -962,19 +980,19 @@ public class GUIPanel
         switch (state) {
 
             case 0:
-                focusModeButton.setMode(ButtonLED.LedMode.OFF);
+                focusModeButton.setMode(LedMode.OFF);
                 focusKnob.setEnabled(true);
                 focusOnePushButton.setEnabled(true);
-                focusOnePushButton.setMode(ButtonLED.LedMode.BLINK);
+                focusOnePushButton.setMode(LedMode.BLINK);
                 focusMoveUpButton.setEnabled(true);
                 focusMoveDownButton.setEnabled(true);
                 break;
 
             case 1:
-                focusModeButton.setMode(ButtonLED.LedMode.ON);
+                focusModeButton.setMode(LedMode.ON);
                 focusKnob.setEnabled(false);
                 focusOnePushButton.setEnabled(false);
-                focusOnePushButton.setMode(ButtonLED.LedMode.OFF);
+                focusOnePushButton.setMode(LedMode.OFF);
                 focusMoveUpButton.setEnabled(false);
                 focusMoveDownButton.setEnabled(false);
                 break;
@@ -985,7 +1003,7 @@ public class GUIPanel
 
         switch (state) {
             case 0:
-                exposureModeButton.setMode(ButtonLED.LedMode.OFF);
+                exposureModeButton.setMode(LedMode.OFF);
                 exposureLabel.setText("GAIN");
                 FieldDefinition gain = cameraManager.getCamera("CAM_A")
                         .getController().getFieldDefinition("exposureGainPosition");
@@ -995,7 +1013,7 @@ public class GUIPanel
                 break;
 
             case 1:
-                exposureModeButton.setMode(ButtonLED.LedMode.ON);
+                exposureModeButton.setMode(LedMode.ON);
                 FieldDefinition exposureCompensation = cameraManager.getCamera("CAM_A")
                         .getController().getFieldDefinition("exposureCompensationPosition");
                 exposureCompensationKnob.configure(exposureCompensation);
@@ -1006,32 +1024,26 @@ public class GUIPanel
         }
     }
 
-
     private void handleWBOnePushStatus(int state) {
 
         switch (state) {
             case 0:
-                onePushWB.setMode(ButtonLED.LedMode.OFF);
+                onePushWB.setMode(LedMode.OFF);
                 break;
 
             case 1:
-                onePushWB.setMode(ButtonLED.LedMode.ON);
+                onePushWB.setMode(LedMode.ON);
                 break;
 
             case 2:
-                onePushWB.setMode(ButtonLED.LedMode.BLINK);
+                onePushWB.setMode(LedMode.BLINK);
                 break;
         }
     }
 
-    // ========================== GETTERS & SETTERS
-
-    public void setCameraManager(PTZCameraManager cameraManager) {
-        this.cameraManager = cameraManager;
+    //MIDI INDICATOR update
+    public Dseg14Display getMidiPanelInfo(){
+        return this.midiPanelInfo;
     }
 
-
-    public boolean isInitialized() {
-        return this.initialized;
-    }
 }

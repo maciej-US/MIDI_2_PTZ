@@ -32,6 +32,8 @@ public class MidiReceiveTest {
                                 + infos[i].getVersion()
                                 + " TX="
                                 + device.getMaxTransmitters()
+                                + " RX="
+                                + device.getMaxReceivers()
 
                 );
             }

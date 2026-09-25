@@ -64,7 +64,7 @@ public class StatusRequestTest {
                                 return;
                             }
 
-                            System.out.printf("RECEIVED: CC = %3d  VALUE = %3d%n", sm.getData1(), sm.getData2());
+                            //System.out.printf("RECEIVED: CC = %3d  VALUE = %3d%n", sm.getData1(), sm.getData2());
 
                         }
 

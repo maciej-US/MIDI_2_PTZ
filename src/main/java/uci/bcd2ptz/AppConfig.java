@@ -38,6 +38,7 @@ public class AppConfig {
         this.presets = presets;
     }
 
+
     // ======================================
     // SYSTEM
     // ======================================
@@ -63,6 +64,30 @@ public class AppConfig {
 
         public void setCameras(List<CameraConfig> cameras) {
             this.cameras = cameras;
+        }
+
+        private GuiConstraints guiConstraints;
+
+        public GuiConstraints getGuiConstraints() {
+            return guiConstraints;
+        }
+
+        public void setGuiConstraints(GuiConstraints guiConstraints) {
+            this.guiConstraints = guiConstraints;
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class GuiConstraints {
+
+        private String lcdFontPath;
+
+        public String getLcdFontPath() {
+            return lcdFontPath;
+        }
+
+        public void setLcdFontPath(String lcdFontPath) {
+            this.lcdFontPath = lcdFontPath;
         }
     }
 
@@ -145,7 +170,9 @@ public class AppConfig {
 
         private String viscaDefinition;
 
-        private String assignedPanel;
+        private String assignedGuiPanel;
+
+        private String assignedMidiPanel;
 
         public String getCameraId() {
             return cameraId;
@@ -187,12 +214,22 @@ public class AppConfig {
             this.viscaDefinition = viscaDefinition;
         }
 
-        public String getAssignedPanel() {
-            return assignedPanel;
+        public String getAssignedGuiPanel() {
+            return assignedGuiPanel;
         }
 
-        public void setAssignedPanel(String assignedPanel) {
-            this.assignedPanel = assignedPanel;
+        public void setAssignedGuiPanel(String assignedGuiPanel) {
+            this.assignedGuiPanel = assignedGuiPanel;
+        }
+
+        public String getAssignedMidiPanel() {
+            return assignedMidiPanel;
+        }
+
+        public void setAssignedMidiPanel(String assignedMidiPanel) {
+            this.assignedMidiPanel = assignedMidiPanel;
         }
     }
+
+
 }

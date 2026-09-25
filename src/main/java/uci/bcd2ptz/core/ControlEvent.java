@@ -13,7 +13,7 @@ public class ControlEvent {
         SYSTEM
     }
     private EventSource eventSource;
-    private String controlID;
+    //private String controlID;
     private ControlCore.ControlPanelId panel;
     private String action;
     private int value;

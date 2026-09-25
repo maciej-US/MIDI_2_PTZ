@@ -45,7 +45,8 @@ public class MidiInputTest {
                             midiConfig.getInputDeviceIndex(),
                             midiConfig.getOutputDeviceIndex(),
                             null,
-                            FULL
+                            FULL,
+                            null
                     );
 
             controller.start();
@@ -87,7 +88,6 @@ public class MidiInputTest {
                 "[CONTROL] SOURCE= %s ID=%s MIDI= %S VALUE=%d",
                 event.getEventSource(),
                 event.getAction(),
-                event.getControlID(),
                 event.getValue()
         );
     }

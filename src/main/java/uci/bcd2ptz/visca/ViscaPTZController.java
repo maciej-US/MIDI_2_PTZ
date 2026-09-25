@@ -1,10 +1,13 @@
 package uci.bcd2ptz.visca;
 
 import uci.bcd2ptz.ptz.PTZCamera;
+import uci.bcd2ptz.ptz.PTZCameraManager;
 import uci.bcd2ptz.ptz.ParameterState;
+import uci.bcd2ptz.ptz.PendingPacket;
 
 import java.net.*;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -19,6 +22,7 @@ public class ViscaPTZController {
 
     //Camera <=> controller connection>
     private final PTZCamera camera;
+    private PTZCameraManager cameraManager;
 
     //Visca payloads and wrapping templates
     private final Map<String, byte[]> udpTemplate = new LinkedHashMap<>();
@@ -37,6 +41,7 @@ public class ViscaPTZController {
         //podłączenie kamery i CommandBuildera
         this.commandBuilder = new ViscaCommandBuilder(config);
         this.camera = camera;
+        this.cameraManager = camera.getCameraManager();
 
         //Wczytanie formatek pakietów UDP i typó komuynikatów VISCA
         Map<String, Object> transport = commandBuilder.getConfig().getTransport();
@@ -94,8 +99,6 @@ public class ViscaPTZController {
      */
     public void executeViscaCommand(String commandName, Map<String, Object> parameters) {
 
-
-
         try {
             byte[] command = commandBuilder.buildCommand(commandName, parameters);
             sendViscaCommand(command,"command");
@@ -116,38 +119,39 @@ public class ViscaPTZController {
      */
     private byte[] executeViscaInquiry(String commandName) {
 
-        clearPendingPackets();
-
         try {
             byte[] command = commandBuilder.buildCommand(commandName);
-            sendViscaCommand(command, "inquiry");
+
+            PendingPacket pending = sendViscaCommand(command, "inquiry");
+
+            if (pending == null){
+                return null;
+            }
 
             long timeout = System.currentTimeMillis() + 1000;
-            byte[] packet = null;
 
             while (System.currentTimeMillis() < timeout) {
-                DatagramPacket response = new DatagramPacket(new byte[32],32);
-                try {
-                    camera.getSocket().receive(response);
-                }catch (SocketTimeoutException e){
-                    LOGGER.fine("No response for inquiry " + commandName + " for camera " + camera.getCameraId());
-                    return null;
-                }
 
-                packet = Arrays.copyOf(
-                        response.getData(),
-                        response.getLength()
-                );
-                if (packet == null || packet.length <= 8){
+                long remaining = timeout - System.currentTimeMillis();
+
+                byte[] packet = pending.getResponses().poll(
+                        remaining,
+                        TimeUnit.MILLISECONDS);
+
+                if (packet == null || packet.length <= payloadOffset){
                     continue;
                 }
 
                 byte[] viscaPayload = Arrays.copyOfRange(packet, this.payloadOffset, packet.length);
 
+                //SKIP ACK
                 if ((viscaPayload[0] & 0xFF) == 0x90 && (viscaPayload[1] & 0xF0) == 0x40) {
                     continue;
                 }
                 if ((viscaPayload[0] & 0xFF) == 0x90 && (viscaPayload[1] & 0xF0) == 0x50){
+                    //DEBUG:
+                    //System.out.println("Received Payload:"  + bytesToHex(viscaPayload, viscaPayload.length));
+
                     return viscaPayload;
                 }
             }
@@ -251,7 +255,7 @@ public class ViscaPTZController {
      * @param viscaPayload tablica bajtów zawierająca komendę VISCA (bez nagłówka UDP)
      * @param type typ komendy (inquiry/command)
      */
-    public void sendViscaCommand(byte[] viscaPayload, String type) {
+    public PendingPacket sendViscaCommand(byte[] viscaPayload, String type) {
 
 
         //DEBUG:
@@ -272,41 +276,14 @@ public class ViscaPTZController {
                             camera.getCameraPort()
                     );
 
-            camera.getSocket().send(dp);
+            //camera.getSocket().send(dp);
+            return cameraManager.sendPacket(camera, command);
 
         } catch (Exception e) {
 
             LOGGER.log(Level.SEVERE,"Błąd wysyłania komendy VISCA", e);
         }
-    }
-
-    private void clearPendingPackets() {
-
-        try {
-            int oldTimeout =camera.getSocket().getSoTimeout();
-            camera.getSocket().setSoTimeout(5);
-
-            DatagramPacket p = new DatagramPacket(new byte[64],64);
-
-            while (true) {
-                camera.getSocket().receive(p);
-
-                //DEBUG
-                //System.out.println("FLUSH RX: "+ bytesToHex(p.getData(),p.getLength()));
-            }
-
-        } catch (SocketTimeoutException ignored) {
-            LOGGER.log(Level.FINEST, "Socket queue cleared.");
-
-        } catch (Exception e) {
-            e.printStackTrace();
-
-        } finally {
-            try {
-                camera.getSocket().setSoTimeout(1000);
-            } catch (Exception ignored) {
-            }
-        }
+        return null;
     }
 
      /* =====================================

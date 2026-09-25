@@ -119,9 +119,8 @@ public class MainGUI implements Runnable, ControlEventListener {
             ControlEvent event =
                     new ControlEvent(
                             GUI,
-                            "EXPOSURE_MODE_KEY",
+                            "EXPOSURE_MODE",
                             ControlCore.ControlPanelId.A,
-                            "EXPOSURE_MODE_KEY",
                             1
                     );
             outputBus.publish(event);
@@ -403,9 +402,8 @@ public class MainGUI implements Runnable, ControlEventListener {
             ControlEvent event =
                     new ControlEvent(
                             GUI,
-                            "ABSOLUTE_MODE_KEY",
                             ControlCore.ControlPanelId.A,
-                            "ABSOLUTE_MODE_KEY",
+                            "PTZ_MODE",
                             1
                     );
 
@@ -575,9 +573,8 @@ public class MainGUI implements Runnable, ControlEventListener {
             ControlEvent event =
                     new ControlEvent(
                             GUI,
-                            "AUTO_SHOOT_KEY",
                             ControlCore.ControlPanelId.A,
-                            "AUTO_SHOOT_KEY",
+                            AUTO_FOLLOW
                             1
                     );
             //DEBUG:
@@ -590,9 +587,9 @@ public class MainGUI implements Runnable, ControlEventListener {
             ControlEvent event =
                     new ControlEvent(
                             GUI,
-                            "FOCUS_MODE_KEY",
+                            "FOCUS_MODE",
                             ControlCore.ControlPanelId.A,
-                            "FOCUS_MODE_KEY",
+                            "FOCUS_MODE",
                             1
                     );
             //DEBUG:
@@ -785,7 +782,7 @@ public class MainGUI implements Runnable, ControlEventListener {
                     handleAbsoluteModeStatus(event.getValue());
                     break;
 
-                case "AUTO_SHOOT_INDICATOR":
+                case "AUTO_FOLLOW_INDICATOR":
                     handleAutoFollowStatus(event.getValue());
                     break;
 

@@ -36,11 +36,34 @@
       }
     },
 
+    "B_SPEED": {
+      "type": "slider",
+      "direction": "input",
+      "messageType": "cc",
+      "channel": 12,
+      "range": {
+        "min": 0,
+        "neutral": 64,
+        "max": 127
+      }
+    },
+
     "A_VOLUME": {
       "type": "slider",
       "direction": "input",
       "messageType": "cc",
       "channel": 0,
+      "range": {
+        "min": 0,
+        "max": 127
+      }
+    },
+
+    "B_VOLUME": {
+      "type": "slider",
+      "direction": "input",
+      "messageType": "cc",
+      "channel": 2,
       "range": {
         "min": 0,
         "max": 127
@@ -58,11 +81,33 @@
       }
     },
 
+    "B_GAIN": {
+      "type": "knob",
+      "direction": "input",
+      "messageType": "cc",
+      "channel": 10,
+      "range": {
+        "min": 0,
+        "max": 127
+      }
+    },
+
     "A_EQ_HIGH": {
       "type": "knob",
       "direction": "input",
       "messageType": "cc",
       "channel": 5,
+      "range": {
+        "min": 0,
+        "max": 127
+      }
+    },
+
+    "B_EQ_HIGH": {
+      "type": "knob",
+      "direction": "input",
+      "messageType": "cc",
+      "channel": 9,
       "range": {
         "min": 0,
         "max": 127
@@ -80,11 +125,33 @@
       }
     },
 
+    "B_EQ_MID": {
+      "type": "knob",
+      "direction": "input",
+      "messageType": "cc",
+      "channel": 8,
+      "range": {
+        "min": 0,
+        "max": 127
+      }
+    },
+
     "A_EQ_LOW": {
       "type": "knob",
       "direction": "input",
       "messageType": "cc",
       "channel": 3,
+      "range": {
+        "min": 0,
+        "max": 127
+      }
+    },
+
+    "B_EQ_LOW": {
+      "type": "knob",
+      "direction": "input",
+      "messageType": "cc",
+      "channel": 7,
       "range": {
         "min": 0,
         "max": 127
@@ -131,11 +198,25 @@
       "note": 5
     },
 
+    "B_RELOOP_BUTTON": {
+      "type": "button",
+      "direction": "input",
+      "messageType": "note",
+      "note": 11
+    },
+
     "A_PLAY_BUTTON": {
       "type": "button",
       "direction": "input",
       "messageType": "note",
       "note": 18
+    },
+
+    "B_PLAY_BUTTON": {
+      "type": "button",
+      "direction": "input",
+      "messageType": "note",
+      "note": 26
     },
 
     "A_CUE_BUTTON": {
@@ -145,11 +226,25 @@
       "note": 19
     },
 
+    "B_CUE_BUTTON": {
+      "type": "button",
+      "direction": "input",
+      "messageType": "note",
+      "note": 27
+    },
+
     "A_SCRATCH_BUTTON": {
       "type": "button",
       "direction": "input",
       "messageType": "note",
       "note": 17
+    },
+
+    "B_SCRATCH_BUTTON": {
+      "type": "button",
+      "direction": "input",
+      "messageType": "note",
+      "note": 25
     },
 
     "A_HIGH_CUT_BUTTON": {
@@ -159,11 +254,25 @@
       "note": 14
     },
 
+    "B_HIGH_CUT_BUTTON": {
+      "type": "button",
+      "direction": "input",
+      "messageType": "note",
+      "note": 22
+    },
+
     "A_MID_CUT_BUTTON": {
       "type": "button",
       "direction": "input",
       "messageType": "note",
       "note": 13
+    },
+
+    "B_MID_CUT_BUTTON": {
+      "type": "button",
+      "direction": "input",
+      "messageType": "note",
+      "note": 21
     },
 
     "A_LOW_CUT_BUTTON": {
@@ -173,11 +282,25 @@
       "note": 12
     },
 
+    "B_LOW_CUT_BUTTON": {
+      "type": "button",
+      "direction": "input",
+      "messageType": "note",
+      "note": 20
+    },
+
     "A_SEARCH_<<_BUTTON": {
       "type": "button",
       "direction": "input",
       "messageType": "note",
       "note": 0
+    },
+
+    "B_SEARCH_<<_BUTTON": {
+      "type": "button",
+      "direction": "input",
+      "messageType": "note",
+      "note": 6
     },
 
     "A_SEARCH_>>_BUTTON": {
@@ -187,6 +310,13 @@
       "note": 1
     },
 
+    "B_SEARCH_>>_BUTTON": {
+      "type": "button",
+      "direction": "input",
+      "messageType": "note",
+      "note": 7
+    },
+
     "KEY_LOCK_BUTTON": {
       "type": "button",
       "direction": "input",
@@ -194,11 +324,67 @@
       "note": 28
     },
 
+    "FX_SELECT_1": {
+      "type": "button",
+      "direction": "input",
+      "messageType": "note",
+      "note": 31
+    },
+
+    "FX_SELECT_2": {
+      "type": "button",
+      "direction": "input",
+      "messageType": "note",
+      "note": 32
+    },
+
+    "FX_SELECT_3": {
+      "type": "button",
+      "direction": "input",
+      "messageType": "note",
+      "note": 33
+    },
+
+    "FX_SELECT_4": {
+      "type": "button",
+      "direction": "input",
+      "messageType": "note",
+      "note": 34
+    },
+
+    "CUE_SELECT_A": {
+      "type": "button",
+      "direction": "input",
+      "messageType": "note",
+      "note": 35
+    },
+
+    "CUE_SELECT_B": {
+      "type": "button",
+      "direction": "input",
+      "messageType": "note",
+      "note": 36
+    },
+
     "A_PLAY_LED": {
       "type": "led",
       "direction": "output",
       "messageType": "cc",
       "channel": 18,
+      "properties": {
+        "states": {
+          "off": 0,
+          "blink": 65,
+          "on": 127
+        }
+      }
+    },
+
+    "B_PLAY_LED": {
+      "type": "led",
+      "direction": "output",
+      "messageType": "cc",
+      "channel": 10,
       "properties": {
         "states": {
           "off": 0,
@@ -222,11 +408,39 @@
       }
     },
 
+    "B_CUE_LED": {
+      "type": "led",
+      "direction": "output",
+      "messageType": "cc",
+      "channel": 9,
+      "properties": {
+        "states": {
+          "off": 0,
+          "blink": 65,
+          "on": 127
+        }
+      }
+    },
+
     "A_SCRATCH_LED": {
       "type": "led",
       "direction": "output",
       "messageType": "cc",
       "channel": 19,
+      "properties": {
+        "states": {
+          "off": 0,
+          "blink": 65,
+          "on": 127
+        }
+      }
+    },
+
+    "B_SCRATCH_LED": {
+      "type": "led",
+      "direction": "output",
+      "messageType": "cc",
+      "channel": 11,
       "properties": {
         "states": {
           "off": 0,
@@ -250,11 +464,39 @@
       }
     },
 
+    "B_RELOOP_LED": {
+      "type": "led",
+      "direction": "output",
+      "messageType": "cc",
+      "channel": 13,
+      "properties": {
+        "states": {
+          "off": 0,
+          "blink": 65,
+          "on": 127
+        }
+      }
+    },
+
     "A_HIGH_CUT_LED": {
       "type": "led",
       "direction": "output",
       "messageType": "cc",
       "channel": 22,
+      "properties": {
+        "states": {
+          "off": 0,
+          "blink": 65,
+          "on": 127
+        }
+      }
+    },
+
+    "B_HIGH_CUT_LED": {
+      "type": "led",
+      "direction": "output",
+      "messageType": "cc",
+      "channel": 14,
       "properties": {
         "states": {
           "off": 0,
@@ -278,6 +520,21 @@
       }
     },
 
+    "B_MID_CUT_LED": {
+      "type": "led",
+      "direction": "output",
+      "messageType": "cc",
+      "channel": 15,
+      "properties": {
+        "states": {
+          "off": 0,
+          "blink": 65,
+          "on": 127
+        }
+      }
+    },
+
+
     "A_LOW_CUT_LED": {
       "type": "led",
       "direction": "output",
@@ -292,11 +549,109 @@
       }
     },
 
+    "B_LOW_CUT_LED": {
+      "type": "led",
+      "direction": "output",
+      "messageType": "cc",
+      "channel": 16,
+      "properties": {
+        "states": {
+          "off": 0,
+          "blink": 65,
+          "on": 127
+        }
+      }
+    },
+
     "KEY_LOCK_LED": {
       "type": "led",
       "direction": "output",
       "messageType": "cc",
       "channel": 25,
+      "properties": {
+        "states": {
+          "off": 0,
+          "blink": 65,
+          "on": 127
+        }
+      }
+    },
+
+    "FX_SELECT_1_LED": {
+      "type": "led",
+      "direction": "output",
+      "messageType": "cc",
+      "channel": 6,
+      "properties": {
+        "states": {
+          "off": 0,
+          "blink": 65,
+          "on": 127
+        }
+      }
+    },
+
+    "FX_SELECT_2_LED": {
+      "type": "led",
+      "direction": "output",
+      "messageType": "cc",
+      "channel": 5,
+      "properties": {
+        "states": {
+          "off": 0,
+          "blink": 65,
+          "on": 127
+        }
+      }
+    },
+
+    "FX_SELECT_3_LED": {
+      "type": "led",
+      "direction": "output",
+      "messageType": "cc",
+      "channel": 4,
+      "properties": {
+        "states": {
+          "off": 0,
+          "blink": 65,
+          "on": 127
+        }
+      }
+    },
+
+    "FX_SELECT_4_LED": {
+      "type": "led",
+      "direction": "output",
+      "messageType": "cc",
+      "channel": 3,
+      "properties": {
+        "states": {
+          "off": 0,
+          "blink": 65,
+          "on": 127
+        }
+      }
+    },
+
+    "CUE_SELECT_A_LED": {
+      "type": "led",
+      "direction": "output",
+      "messageType": "cc",
+      "channel": 2,
+      "properties": {
+        "states": {
+          "off": 0,
+          "blink": 65,
+          "on": 127
+        }
+      }
+    },
+
+    "CUE_SELECT_B_LED": {
+      "type": "led",
+      "direction": "output",
+      "messageType": "cc",
+      "channel": 1,
       "properties": {
         "states": {
           "off": 0,
@@ -327,9 +682,19 @@
       "action": "PAN"
     },
 
+    "B_JOG": {
+      "panel" : "B",
+      "action": "PAN"
+    },
+
     "A_SPEED": {
       "panel" : "A",
       "action": "TILT"
+    },
+
+    "B_SPEED": {
+      "panel" : "B",
+      "action": "ZOOM"
     },
 
     "A_VOLUME": {
@@ -337,8 +702,18 @@
       "action": "ZOOM"
     },
 
+    "B_VOLUME": {
+      "panel" : "B",
+      "action": "TILT"
+    },
+
     "A_GAIN": {
       "panel" : "A",
+      "action" : "EXPOSURE_COMPENSATION"
+    },
+
+    "B_GAIN": {
+      "panel" : "B",
       "action" : "EXPOSURE_COMPENSATION"
     },
 
@@ -347,8 +722,18 @@
       "action" : "EXPOSURE_IRIS"
     },
 
+    "B_EQ_HIGH": {
+      "panel" : "B",
+      "action" : "EXPOSURE_IRIS"
+    },
+
     "A_EQ_MID": {
       "panel" : "A",
+      "action" : "EXPOSURE_SHUTTER"
+    },
+
+    "B_EQ_MID": {
+      "panel" : "B",
       "action" : "EXPOSURE_SHUTTER"
     },
 
@@ -357,39 +742,67 @@
       "action" : "FOCUS"
     },
 
+    "B_EQ_LOW": {
+      "panel" : "B",
+      "action" : "FOCUS"
+    },
+
     "FX_2_PARAM": {
       "panel" : "A",
-      "action" : "WHITE_BALANCE_R_GAIN"
+      "action" : "WHITE_BALANCE_R_GAIN",
+      "reassignable" : true
     },
 
     "FX_3_PARAM": {
       "panel": "A",
-      "action": "WHITE_BALANCE_B_GAIN"
+      "action": "WHITE_BALANCE_B_GAIN",
+      "reassignable" : true
     },
 
     "FX_4_PARAM": {
       "panel" : "A",
-      "action" : "WHITE_BALANCE_MODE"
+      "action" : "WHITE_BALANCE_MODE",
+      "reassignable" : true
     },
 
     "A_SCRATCH_BUTTON": {
       "panel" : "A",
-      "action" : "ABSOLUTE_MODE_KEY"
+      "action" : "PTZ_MODE"
+    },
+
+    "B_SCRATCH_BUTTON": {
+      "panel" : "B",
+      "action" : "PTZ_MODE"
     },
 
     "A_PLAY_BUTTON": {
       "panel" : "A",
-      "action" : "TALLY_KEY"
+      "action" : "TALLY"
+    },
+
+    "B_PLAY_BUTTON": {
+      "panel" : "B",
+      "action" : "TALLY"
     },
 
     "A_CUE_BUTTON": {
       "panel" : "A",
-      "action" : "AUTO_SHOOT_KEY"
+      "action" : "AUTO_FOLLOW"
+    },
+
+    "B_CUE_BUTTON": {
+      "panel" : "B",
+      "action" : "AUTO_FOLLOW"
     },
 
     "A_HIGH_CUT_BUTTON": {
       "panel" : "A",
-      "action" : "EXPOSURE_MODE_KEY"
+      "action" : "EXPOSURE_MODE"
+    },
+
+    "B_HIGH_CUT_BUTTON": {
+      "panel" : "B",
+      "action" : "EXPOSURE_MODE"
     },
 
     "A_MID_CUT_BUTTON": {
@@ -397,18 +810,70 @@
       "action" : "ONE_PUSH_FOCUS_KEY"
     },
 
+    "B_MID_CUT_BUTTON": {
+      "panel" : "B",
+      "action" : "ONE_PUSH_FOCUS_KEY"
+    },
+
     "A_LOW_CUT_BUTTON": {
       "panel" : "A",
-      "action" : "FOCUS_MODE_KEY"
+      "action" : "FOCUS_MODE"
+    },
+
+    "B_LOW_CUT_BUTTON": {
+      "panel" : "B",
+      "action" : "FOCUS_MODE"
     },
 
     "KEY_LOCK_BUTTON": {
       "panel" : "A",
-      "action" : "ONE_PUSH_WHITE_BALANCE_KEY"
+      "action" : "ONE_PUSH_WHITE_BALANCE_KEY",
+      "reassignable" : true
+    },
+
+    "FX_SELECT_4": {
+      "panel" : "A",
+      "action" : "CAMERA_SELECT_D",
+      "reassignable" : true
+    },
+
+    "FX_SELECT_3": {
+      "panel" : "A",
+      "action" : "CAMERA_SELECT_C",
+      "reassignable" : true
+    },
+
+    "FX_SELECT_2": {
+      "panel" : "A",
+      "action" : "CAMERA_SELECT_B",
+      "reassignable" : true
+    },
+
+    "FX_SELECT_1": {
+      "panel" : "A",
+      "action" : "CAMERA_SELECT_A",
+      "reassignable" : true
+    },
+
+    "CUE_SELECT_A": {
+      "panel" : "A",
+      "action" : "PANEL_SELECT_A",
+      "reassignable" : true
+    },
+
+    "CUE_SELECT_B": {
+      "panel" : "A",
+      "action" : "PANEL_SELECT_B",
+      "reassignable" : true
     },
 
     "A_SEARCH_<<_BUTTON": {
       "panel" : "A",
+      "action" : "FOCUS_DOWN_KEY"
+    },
+
+    "B_SEARCH_<<_BUTTON": {
+      "panel" : "B",
       "action" : "FOCUS_DOWN_KEY"
     },
 
@@ -417,23 +882,49 @@
       "action" : "FOCUS_UP_KEY"
     },
 
+    "B_SEARCH_>>_BUTTON": {
+      "panel" : "B",
+      "action" : "FOCUS_UP_KEY"
+    },
+
     "A_SCRATCH_LED": {
       "panel" : "A",
       "action" : "ABSOLUTE_MODE_INDICATOR"
     },
+
+    "B_SCRATCH_LED": {
+      "panel" : "B",
+      "action" : "ABSOLUTE_MODE_INDICATOR"
+    },
+
 
     "A_PLAY_LED": {
       "panel" : "A",
       "action" : "TALLY_INDICATOR"
     },
 
+    "B_PLAY_LED": {
+      "panel" : "B",
+      "action" : "TALLY_INDICATOR"
+    },
+
     "A_CUE_LED": {
       "panel" : "A",
-      "action" : "AUTO_SHOOT_INDICATOR"
+      "action" : "AUTO_FOLLOW_INDICATOR"
+    },
+
+    "B_CUE_LED": {
+      "panel" : "B",
+      "action" : "AUTO_FOLLOW_INDICATOR"
     },
 
     "A_HIGH_CUT_LED": {
       "panel" : "A",
+      "action" : "EXPOSURE_MODE_INDICATOR"
+    },
+
+    "B_HIGH_CUT_LED": {
+      "panel" : "B",
       "action" : "EXPOSURE_MODE_INDICATOR"
     },
 
@@ -442,14 +933,60 @@
       "action" : "ONE_PUSH_FOCUS_INDICATOR"
     },
 
+    "B_MID_CUT_LED": {
+      "panel" : "B",
+      "action" : "ONE_PUSH_FOCUS_INDICATOR"
+    },
+
     "A_LOW_CUT_LED": {
       "panel" : "A",
       "action" : "FOCUS_MODE_INDICATOR"
     },
 
+    "B_LOW_CUT_LED": {
+      "panel" : "B",
+      "action" : "FOCUS_MODE_INDICATOR"
+    },
+
     "KEY_LOCK_LED": {
       "panel" : "A",
-      "action" : "WHITE_BALANCE_PUSH_INDICATOR"
+      "action" : "WHITE_BALANCE_PUSH_INDICATOR",
+      "reassignable" : true
+    },
+
+    "FX_SELECT_1_LED": {
+      "panel" : "A",
+      "action" : "CAM_SELECT_1_INDICATOR",
+      "reassignable" : true
+    },
+
+    "FX_SELECT_2_LED": {
+      "panel" : "A",
+      "action" : "CAM_SELECT_2_INDICATOR",
+      "reassignable" : true
+    },
+
+    "FX_SELECT_3_LED": {
+      "panel" : "A",
+      "action" : "CAM_SELECT_3_INDICATOR",
+      "reassignable" : true
+    },
+
+    "FX_SELECT_4_LED": {
+      "panel" : "A",
+      "action" : "CAM_SELECT_4_INDICATOR",
+      "reassignable" : true
+    },
+
+    "CUE_SELECT_A_LED": {
+      "panel" : "A",
+      "action" : "PANEL_SELECT_INDICATOR"
+    },
+
+    "CUE_SELECT_B_LED": {
+      "panel" : "B",
+      "action" : "PANEL_SELECT_INDICATOR"
     }
+
   }
 }

@@ -5,9 +5,12 @@ import javax.swing.Timer;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class MidiOutputController {
+public class MidiOutputController  {
 
-    private final Receiver receiver;
+
+    private Receiver receiver;
+    private MidiDevice device;
+
 
     private final boolean hardwareBlinking;
     private Thread blinkThread;
@@ -23,13 +26,12 @@ public class MidiOutputController {
     public MidiOutputController( int deviceIndex, boolean hardwareBlinking) {
 
         this.hardwareBlinking = hardwareBlinking;
-        Receiver tmpReceiver = null;
 
         try {
             MidiDevice.Info[] devices = MidiSystem.getMidiDeviceInfo();
-            MidiDevice device = MidiSystem.getMidiDevice(devices[deviceIndex]);
-            device.open();
-            tmpReceiver = device.getReceiver();
+            this.device = MidiSystem.getMidiDevice(devices[deviceIndex]);
+            this.device.open();
+            receiver = device.getReceiver();
 
             System.out.println("MIDI OUT ready: " + devices[deviceIndex].getName());
 
@@ -42,8 +44,6 @@ public class MidiOutputController {
             System.err.println("MIDI OUT initialization error");
             e.printStackTrace();
         }
-
-        this.receiver = tmpReceiver;
     }
 
     /**
@@ -186,4 +186,27 @@ public class MidiOutputController {
         disableBlink(cc);
         sendCC(cc, value);
     }
+
+    public void close() {
+
+        if (blinkThread != null) {
+            blinkThread.interrupt();
+            blinkThread = null;
+        }
+
+        blinkingOutputs.clear();
+
+        if (receiver != null) {
+            receiver.close();
+            receiver = null;
+        }
+
+        if (device != null && device.isOpen()) {
+
+            device.close();
+
+            System.out.println("MIDI OUT stopped.");
+        }
+    }
+
 }

@@ -10,4 +10,5 @@ public class MidiBindingDefinition {
      */
     private String action;
     private String panel;
+    private boolean reassignable;
 }

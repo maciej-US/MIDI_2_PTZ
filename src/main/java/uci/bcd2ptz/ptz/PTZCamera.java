@@ -34,13 +34,15 @@ public class PTZCamera {
      * Sterownik przypisany do tej kamery
      */
     private final ViscaPTZController controller;
+    private final PTZCameraManager cameraManager;
 
     public PTZCamera(
             String cameraId,
             String ipAddress,
             int cameraPort,
             int localPort,
-            ViscaConfig config)
+            ViscaConfig config,
+            PTZCameraManager cameraManager)
             throws Exception {
 
         //DEBUG:
@@ -55,7 +57,19 @@ public class PTZCamera {
 
         this.socket = new DatagramSocket(null);
         this.socket.setReuseAddress(true);
-        this.socket.bind(new InetSocketAddress(localPort));
+
+        this.cameraManager = cameraManager;
+
+        //SCAFF
+        InetAddress localAddress = InetAddress.getByName("100.75.75.78");
+        this.socket.bind(new InetSocketAddress(localAddress, 52381));
+
+        //Debug
+        System.out.println("CAMERA " + cameraId + " IP " + ipAddress + " PORT " + localPort +
+                "\nCONSOLE IP " + socket.getLocalAddress() + " PORT " + socket.getLocalPort() + "\n");
+
+
+        //this.socket.bind(new InetSocketAddress(localPort));
         this.socket.connect(this.address, this.cameraPort);
 
         Map<String, ParameterState> parameters = new HashMap<>();
@@ -102,10 +116,10 @@ public class PTZCamera {
 
 
         //DEBUG:
-        System.out.println("============ CAMERA CONSTRUCTOR =============\nPARAMETERS LIST: " + this.parameters.keySet());
-        //System.out.println("PAN prameter: " + this.parameters.get("panPosition").toString());
-        //System.out.println("TILT prameter: " + this.parameters.get("tiltPosition").toString());
-        //System.out.println("FOCUS prameter: " + this.parameters.get("focus").toString());
+        /* System.out.println ("============ CAMERA CONSTRUCTOR =============\nPARAMETERS LIST: " + this.parameters.keySet());
+        System.out.println("PAN prameter: " + this.parameters.get("panPosition").toString());
+        System.out.println("TILT prameter: " + this.parameters.get("tiltPosition").toString());
+        System.out.println("FOCUS prameter: " + this.parameters.get("focus").toString());*/
     }
 
     public void touch() {
@@ -159,7 +173,8 @@ public class PTZCamera {
 
     public boolean powerStatusRequest(){
         //DEBUG:
-        //System.out.println("Camera " + this.cameraId + " power status request");
+        /*System.out.println("Camera " + this.cameraId + " power status request\n" +
+                "IP " + this.ipAddress + " PORT " + this.cameraPort + " || LOCAL IP" + socket.getLocalAddress() + " PORT " + socket.getLocalPort());*/
         controller.parameterInquiry("powerStatus");
         //DEBUG
 
@@ -290,7 +305,7 @@ public class PTZCamera {
 
         ParameterState parameter = this.parameters.get(parameterName);
 
-        //System.out.println("==== CAMERA ======\nparameter requested: " + parameter.toString());
+        //System.out.println("==== CAMERA ======\nparameter requested: " + parameterName);
 
         if (parameter != null) {
             return parameter;
@@ -303,7 +318,7 @@ public class PTZCamera {
         controller.parameterInquiry(parameterName);
 
         //DEBUG
-        /*System.out.println(parameterName + "Parameter Received. Name: " + parameterName + " Values: " + parameters.get(parameterName).toString());*/
+        //System.out.println(parameterName + "Parameter Received. Name: " + parameterName + " Values: " + parameters.get(parameterName).toString());
 
         return this.parameters.get(parameterName);
     }

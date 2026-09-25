@@ -2,15 +2,16 @@ package uci.bcd2ptz.core;
 
 import uci.bcd2ptz.gui.MainGUI;
 import uci.bcd2ptz.midi.MidiController;
+import uci.bcd2ptz.midi.MidiControllerManager;
 import uci.bcd2ptz.ptz.PTZCamera;
 import uci.bcd2ptz.ptz.PTZCameraManager;
 import uci.bcd2ptz.ptz.ParameterState;
 import uci.bcd2ptz.visca.FieldDefinition;
 
-import javax.swing.*;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.logging.Logger;
 
 import static uci.bcd2ptz.core.ControlCore.Control.*;
@@ -24,6 +25,7 @@ public class ControlCore {
         TILT,
         PAN,
         ZOOM,
+        PTZ_MODE,
         FOCUS,
         FOCUS_MODE,
         AUTO_FOLLOW,
@@ -33,6 +35,7 @@ public class ControlCore {
         EXPOSURE_GAIN,
         EXPOSURE_IRIS,
         EXPOSURE_SHUTTER,
+        WHITE_BALANCE_MODE,
         WHITE_BALANCE_PUSH,
         WHITE_BALANCE_R_GAIN,
         WHITE_BALANCE_B_GAIN
@@ -70,9 +73,10 @@ public class ControlCore {
 
     // COMMUNICATION With MIDI, GUI & CAMERAS
     private final PTZCameraManager cameraManager;
-    private MidiController midiController;
+    private final MidiControllerManager midiManager;
+    private final MidiController midiController;
     private MainGUI gui;
-    private ControlEventBus inputBus;
+    private final ControlEventBus inputBus;
 
 
     // Kontrola statusu
@@ -89,49 +93,38 @@ public class ControlCore {
      * Konstruktor klasy MidiToPTZ
      *
      * @param cameraManager
-     * @param midiController
+     * @param
      */
 
-    public ControlCore(PTZCameraManager cameraManager, MidiController midiController, ControlEventBus inputBus, RunMode mode) {
+    public ControlCore(PTZCameraManager cameraManager, MidiControllerManager midiManager, ControlEventBus inputBus, RunMode mode) {
 
         this.cameraManager = cameraManager;
-        this.midiController = midiController;
+        this.midiManager = midiManager;
+        this.midiController = midiManager.getMidiController();
         this.inputBus = inputBus;
         this.mode = mode;
 
-        panels.put(A, new ControlPanel(A));
-        panels.get(A).getStates().put(TILT, ModeState.JOYSTICK);
-        panels.get(A).getStates().put(FOCUS, ModeState.AUTO);
-        panels.get(A).getStates().put(TALLY, ModeState.OFF);
-        panels.get(A).getStates().put(AUTO_FOLLOW, ModeState.OFF);
-        panels.get(A).getStates().put(EXPOSURE_MODE, ModeState.AUTO);
-        panels.get(A).getStates().put(FOCUS_MODE, ModeState.AUTO);
-        panels.get(A).setAcceptingPanTilt(true);
+        for (ControlPanelId panelId : ControlPanelId.values()) {
 
-        panels.put(B, new ControlPanel(B));
-        panels.get(B).getStates().put(TILT, ModeState.JOYSTICK);
-        panels.get(B).getStates().put(FOCUS, ModeState.AUTO);
-        panels.get(B).getStates().put(TALLY, ModeState.OFF);
-        panels.get(B).getStates().put(AUTO_FOLLOW, ModeState.OFF);
-        panels.get(B).getStates().put(EXPOSURE_MODE, ModeState.AUTO);
-        panels.get(B).getStates().put(FOCUS_MODE, ModeState.AUTO);
-        panels.get(B).setAcceptingPanTilt(true);
-
+            if (cameraManager.getCoreAssignedCamera(panelId) != null) {
+                panels.put(
+                        panelId,
+                        createPanel(panelId)
+                );
+            }
+        }
     }
 
 
     /**
      * Uruchamia główną pętlę sterowania systemu.
-     *
      * Metoda inicjalizuje mapowania kontrolek MIDI, odświeża wskaźniki GUI
      * oraz uruchamia dedykowany wątek nasłuchujący kolejki zdarzeń MIDI.
-     *
      * Obsługiwane są dwa typy komunikatów:
      * <ul>
      *     <li>CC (Control Change) - wartości suwaków, enkoderów i pokręteł</li>
      *     <li>NT (Note On/Off) - przyciski funkcyjne i przełączniki</li>
      * </ul>
-     *
      * Wątek pracuje w sposób ciągły przez cały czas działania aplikacji
      * i przekazuje odebrane komunikaty do odpowiednich metod obsługi.
      *
@@ -148,7 +141,7 @@ public class ControlCore {
         //AUtomiation initial states configuration
 
         for (ControlPanel panel : panels.values()){
-            PTZCamera camera = panel.getAssignedCamera();
+            PTZCamera camera = cameraManager.getCoreAssignedCamera(panel.getId());
             if (camera != null) {
                 //--- exposure mode
                 ParameterState stateParam = new ParameterState();
@@ -194,28 +187,36 @@ public class ControlCore {
             return;
         }
 
-        //String panelId = event.getPanel();
+        //REBINDING MIDI
+        if (event.getAction().startsWith("CAMERA_SELECT_")){
+            handleCameraSelect(event);
+            return;
+        }
 
-        ControlPanel panel = panels.get(event.getPanel());
+        ControlPanel targetPanel = panels.get(resolveControlPanel(event));
 
         // DEBUG
-        //System.out.println("=========== CORE ========= \nhandleControlEvent: " + event.getEventSource() + " action: " + event.getAction());
-        //System.out.println("Panel: " + panel.getId());
+       /* System.out.println("=========== CORE ========= \nhandleControlEvent: SOURCE" + event.getEventSource() + "   Source panel: " + event.getPanel() + " destination panel: " + targetPanel.getId() + "\n" +
+                " action: " + event.getAction() + " value: " + event.getValue());
+        System.out.println("Panel: " + targetPanel.getId());*/
 
-        if (panel == null) {
-            System.out.println("Panel not found: " + event.getPanel());
+        if (targetPanel == null) {
+            //DEBUG
+            //System.out.println("Panel not found: " + event.getPanel());
             return;
         }
 
-        PTZCamera camera = panel.getAssignedCamera();
+        PTZCamera camera = cameraManager.getCoreAssignedCamera(targetPanel.getId());
 
-        if (camera == null) {
-            System.out.println("Panel " + event.getPanel() + " has no assigned camera");
-            return;
-        }
+        ControlEvent coreEvent = new ControlEvent(
+                SYSTEM,
+                targetPanel.getId(),
+                event.getAction(),
+                event.getValue()
+        );
 
-        int value = event.getValue();
-        String action =event.getAction();
+        int value = coreEvent.getValue();
+        String action =coreEvent.getAction();
 
         /* Synchronizacja po wyjściu z ABS */
 
@@ -223,9 +224,9 @@ public class ControlCore {
 
             waitingForStateSync = false;
 
-            if (isNeutral(value)) {enterJoystickMode(panel, TILT);
+            if (isNeutral(value)) {enterJoystickMode(targetPanel, TILT);
             } else {
-                enterWaitNeutral(panel, TILT);
+                enterWaitNeutral(targetPanel, TILT);
             }
             return;
         }
@@ -233,98 +234,98 @@ public class ControlCore {
         switch (action) {
 
             case "REQUEST_RESPONSE":
-                handleMidiStatusResponse(event);
+                handleMidiStatusResponse(coreEvent);
                 return;
 
             case "PAN":
-                handlePan(panel, value, event.getAction());
+                handlePan(coreEvent);
                 break;
 
             case "TILT":
-                handleTilt(panel, value, event.getAction());
+                handleTilt(coreEvent);
                 break;
 
             case "ZOOM":
-                handleZoom(panel, value, event.getAction());
+                handleZoom(coreEvent);
                 break;
 
-            case "FOCUS_MODE_KEY":
-                handleFocusMode(panel, FOCUS, event.getValue());
+            case "FOCUS_MODE":
+                handleFocusMode(coreEvent);
                 break;
 
             case "FOCUS_UP_KEY":
-                handleFocus(panel, event);
+                handleFocus(coreEvent);
                 break;
 
             case "FOCUS_DOWN_KEY":
-                handleFocus(panel,  event);
+                handleFocus(coreEvent);
                 break;
 
             case "FOCUS":
-                if (panel.getStates().get(FOCUS_MODE) == ModeState.MANUAL) {
-                    handleFocus(panel, event);
+                if (targetPanel.getStates().get(FOCUS_MODE) == ModeState.MANUAL) {
+                    handleFocus(coreEvent);
                 }
                 break;
 
             case "ONE_PUSH_FOCUS_KEY":
-                if (panel.getStates().get(FOCUS_MODE) == ModeState.MANUAL){
-                    handleFocusOnePush(panel, FOCUS, event.getValue());
+                if (targetPanel.getStates().get(FOCUS_MODE) == ModeState.MANUAL){
+                    handleFocusOnePush(coreEvent);
                 }
                 break;
 
             case "EXPOSURE_COMPENSATION":
-                if(panel.getStates().get(EXPOSURE_MODE) == ModeState.AUTO) {
-                    handleCameraImageParameter(panel, value, "exposureCompensation", event.getAction());
-                    //handleExposureCompensation(panel, value, event.getAction());
-                }
-                if(panel.getStates().get(EXPOSURE_MODE) == ModeState.MANUAL) {
-                    handleCameraImageParameter(panel, value, "exposureGain", event.getAction());
-                    //handleExposureGain(panel, value, event.getAction());
-                }
+                handleCameraImageParameter(coreEvent);
                 break;
 
             case "EXPOSURE_IRIS":
-                handleCameraImageParameter(panel, value, "exposureIris", event.getAction());
+                handleCameraImageParameter(coreEvent);
                 break;
 
             case "EXPOSURE_SHUTTER":
-                handleCameraImageParameter(panel, value, "exposureShutter", event.getAction());
+                handleCameraImageParameter(coreEvent);
                 break;
 
-            case "ABSOLUTE_MODE_KEY":
-                if (event.getValue() == 0) {return;}
-                handlePTZMode(panel,TILT);
+            case "PTZ_MODE":
+                if (coreEvent.getValue() == 0) {return;}
+                handlePTZMode(coreEvent);
                 break;
 
-            case "TALLY_KEY":
-                if (event.getValue() == 0) {return;}
-                    handleTally(panel, TALLY);
+            case "TALLY":
+                if (coreEvent.getValue() == 0) {return;}
+                    handleTally(coreEvent);
                 break;
 
-            case "AUTO_SHOOT_KEY":
-                if (event.getValue() == 0) {return;}
-                    handleAutoFollow(panel, AUTO_FOLLOW);
+            case "AUTO_FOLLOW":
+                if (coreEvent.getValue() == 0) {return;}
+                    handleAutoFollow(coreEvent);
                 break;
 
-            case "EXPOSURE_MODE_KEY":
-                if (event.getValue() == 0) {return;}
-                handleExposureMode(panel, EXPOSURE_MODE);
+            case "EXPOSURE_MODE":
+                if (coreEvent.getValue() == 0) {return;}
+                handleExposureMode(coreEvent);
                 break;
 
             case "WHITE_BALANCE_MODE":
-                handleWBMode(panel, value);
+                handleWBMode(coreEvent);
                 break;
 
             case "ONE_PUSH_WHITE_BALANCE_KEY":
-                handleWBPush(panel, WHITE_BALANCE_PUSH, event.getValue()); ;
+                handleWBPush(coreEvent);
                 break;
 
             case "WHITE_BALANCE_R_GAIN":
-                handleCameraImageParameter(panel, value, "whiteBalanceRGain", event.getAction());
+                handleCameraImageParameter(coreEvent);
                 break;
 
             case "WHITE_BALANCE_B_GAIN":
-                handleCameraImageParameter(panel, value, "whiteBalanceBGain", event.getAction());
+                handleCameraImageParameter(coreEvent);
+                break;
+
+            case "CAMERA_SELECT_A":
+            case "CAMERA_SELECT_B":
+            case "CAMERA_SELECT_C":
+            case "CAMERA_SELECT_D":
+                handleCameraSelect(coreEvent);
                 break;
 
             default:
@@ -336,7 +337,10 @@ public class ControlCore {
     }
 
     //TODO: Obsługa innych trybów pracy JOGA albo wyrzucenie obsługi trybów do MidiController - tu tylko obsługa z gotową prędkością
-    private void handlePan(ControlPanel panel, int value, String controlId) {
+    private void handlePan(ControlEvent event) {
+
+        ControlPanel panel = panels.get(event.getPanel());
+        int value = event.getValue();
 
         //Locked when in Auto Follow mode
         if (panel.getStates().get(AUTO_FOLLOW) == ModeState.ON) {
@@ -346,12 +350,12 @@ public class ControlCore {
 //        System.out.println("===========CONTROL CORE ===============\n" +
 //                "handle PAN " + controlId + " -> Received value: " + value);
 
-        PTZCamera camera = panel.getAssignedCamera();
+        PTZCamera camera =  cameraManager.getCoreAssignedCamera(event.getPanel());
 
         if (camera == null) {return;}
 
-        ModeState mode = panel.getStates().get(TILT);
-        int speed = 0;
+        ModeState mode = panel.getStates().get(PTZ_MODE);
+        int speed;
 
         //DEBUG:
         //System.out.println("MODE = " + mode);
@@ -373,12 +377,11 @@ public class ControlCore {
                 camera.movePanTilt(value * 4, 0);
                 ControlEvent eventJOY = new ControlEvent(
                         SYSTEM,
-                        "PAN",
                         panel.getId(),
-                        controlId,
+                        event.getAction(),
                         value);
 
-                gui.handleControlEvent(eventJOY);
+                sendControlEvent(eventJOY);
                 return;
 
             case ABSOLUTE:
@@ -387,7 +390,7 @@ public class ControlCore {
 
                 double fullrange = camera.getParameter("panPosition").getMax() - camera.getParameter("panPosition").getMin();
                 double deegressPerTick = fullrange / midiController.getConfig().getJogResolution();
-                Double delta = value * deegressPerTick;
+                double delta = value * deegressPerTick;
                 double stepSize = Math.abs(delta);
                 if ( stepSize <= 5.0){
                     speed = 10;
@@ -400,20 +403,22 @@ public class ControlCore {
 
                 ControlEvent eventABS = new ControlEvent(
                         SYSTEM,
-                        "PAN",
                         panel.getId(),
-                        controlId,
+                        event.getAction(),
                         value);
 
-                gui.handleControlEvent(eventABS);
+                sendControlEvent(eventABS);
                 break;
         }
     }
 
-    private void handleTilt(ControlPanel panel, int value, String controlId) {
+    private void handleTilt(ControlEvent event) {
 
         //DEBUG
         //System.out.println("handleMidiTilt - Received value: " + value);
+
+        ControlPanel panel = panels.get(event.getPanel());
+        int value = event.getValue();
 
         //Locked when in Auto Follow mode
         if (panel.getStates().get(AUTO_FOLLOW) == ModeState.ON) {
@@ -427,16 +432,17 @@ public class ControlCore {
             return;
         }
 
-        if (!panel.isAcceptingPanTilt()) {return;}
+        if (!panel.isAcceptingPanTilt()) {
+            return;
+        }
 
-        PTZCamera camera = panel.getAssignedCamera();
-
+        PTZCamera camera = cameraManager.getCoreAssignedCamera(panel.getId());
         if (camera == null) {return;}
 
         //DEBUG:
         //System.out.println("MODE: " + panel.getStates().get(TILT));
 
-        if (panel.getStates().get(TILT) == ModeState.ABSOLUTE) {
+        if (panel.getStates().get(PTZ_MODE) == ModeState.ABSOLUTE) {
 
             double oldTilt = camera.getParameter("tiltPosition").getCurrent();
             double newTilt = midiToDegrees(camera, "tiltPosition", value);
@@ -459,33 +465,31 @@ public class ControlCore {
             camera.movePanTilt(0,value -64);
         }
 
-        ControlEvent event = new ControlEvent(
+        ControlEvent returnEvent = new ControlEvent(
                 SYSTEM,
-                "TILT",
                 panel.getId(),
-                controlId,
+                event.getAction(),
                 value);
 
-        if (mode == RunMode.FULL) {
-            midiController.sendControlEvent(event);
-        }
-        gui.handleControlEvent(event);
+        sendControlEvent(returnEvent);
     }
 
     //TODO: zaimplementować zoom w trybie joystick
-    private void handleZoom(ControlPanel panel, int value, String controlId) {
+    private void handleZoom(ControlEvent event) {
+
+        ControlPanel panel = panels.get(event.getPanel());
+        int value = event.getValue();
 
         //Locked when in Auto Follow mode
         if (panel.getStates().get(AUTO_FOLLOW) == ModeState.ON) {
             return;
         }
 
-        PTZCamera camera = panel.getAssignedCamera();
+        PTZCamera camera = cameraManager.getCoreAssignedCamera(panel.getId());
 
         if (camera == null) {return;}
 
-        FieldDefinition zoomField =camera.getController()
-                        .getFieldDefinition("zoomPosition");
+        FieldDefinition zoomField =camera.getController().getFieldDefinition("zoomPosition");
 
         Map<String, Object> mapping =zoomField.getMapping();
         Map<String, Object> mechanicalRange = (Map<String, Object>)mapping.get("mechanicalRange");
@@ -503,28 +507,36 @@ public class ControlCore {
         camera.getParameter("zoomPosition").setCurrent(zoomPosition);
         camera.moveZoomAbsolute(zoomPosition);
 
-        ControlEvent event =
+        ControlEvent returnEvent =
                 new ControlEvent(
                         SYSTEM,
-                        "ZOOM",
                         panel.getId(),
-                        controlId,
+                        event.getAction(),
                         value
                 );
 
-        gui.handleControlEvent(event);
+        sendControlEvent(returnEvent);
+
+        //    gui.handleControlEvent(returnEvent);
     }
 
-    private void handleFocusMode(ControlPanel panel, Control control, int value) {
+    private void handleFocusMode(ControlEvent event) {
 
+        ControlPanel panel = panels.get(event.getPanel());
+        Control control = Control.valueOf(event.getAction());
+        int value = event.getValue();
 
-        if (control != FOCUS_MODE && value == 0){
+        //DEbug:
+        System.out.println("Handle focus mode event ==> " + event.toString()
+        + "\n control value:  " + control.toString());
+
+        if (control != FOCUS_MODE || value == 0){
             return;
         }
         //DEBUG
         //System.out.println("==== CORE ======\nhandleFocusMode for panel " + panel.getStates().toString() + " \ncontrol: " + control + "  VAL = " + value);
 
-        PTZCamera camera = panel.getAssignedCamera();
+        PTZCamera camera = cameraManager.getCoreAssignedCamera(panel.getId());
         if (camera == null){
             return;
         }
@@ -538,52 +550,40 @@ public class ControlCore {
             param.setCurrentState("AUTO");
         }
 
-        ControlEvent event = null;
+        ControlEvent returnEvent = null;
         String newState = null;
         if (param.getCurrentState().equals("AUTO")){
 
-            event = new ControlEvent(
+            returnEvent = new ControlEvent(
                     SYSTEM,
-                    "ONE_PUSH_FOCUS_INDICATOR",
                     panel.getId(),
                     "ONE_PUSH_FOCUS_INDICATOR",
                     2
             );
 
-            gui.handleControlEvent(event);
+            sendControlEvent(returnEvent);
 
-            if (mode == RunMode.FULL) {
-                midiController.sendControlEvent(event);
-            }
-
-            event = new ControlEvent(
+            returnEvent = new ControlEvent(
                     SYSTEM,
-                    "FOCUS_MODE_INDICATOR",
                     panel.getId(),
                     "FOCUS_MODE_INDICATOR",
                     0
             );
             newState = "MANUAL";
-            System.out.println("FOCUS SWITCHED TO AUTO");
+            //System.out.println("FOCUS SWITCHED TO AUTO");
 
         } else if (param.getCurrentState().equals("MANUAL")){
-            event = new ControlEvent(
+            returnEvent = new ControlEvent(
                     SYSTEM,
-                    "ONE_PUSH_FOCUS_INDICATOR",
                     panel.getId(),
                     "ONE_PUSH_FOCUS_INDICATOR",
                     0
             );
 
-                gui.handleControlEvent(event);
+            sendControlEvent(returnEvent);
 
-                if (mode == RunMode.FULL) {
-                    midiController.sendControlEvent(event);
-                }
-
-            event = new ControlEvent(
+            returnEvent = new ControlEvent(
                     SYSTEM,
-                    "FOCUS_MODE_INDICATOR",
                     panel.getId(),
                     "FOCUS_MODE_INDICATOR",
                     1
@@ -598,40 +598,88 @@ public class ControlCore {
         }
 
         if (event != null) {
-            gui.handleControlEvent(event);
-
-            if (mode == RunMode.FULL) {
-                midiController.sendControlEvent(event);
-            }
+            sendControlEvent(returnEvent);
         }
-
     }
 
-    private void handleCameraImageParameter(ControlPanel panel, int midiValue, String parameterName, String guiEventName) {
+    private void handleCameraImageParameter(ControlEvent event) {
 
         //DEBUG
-        /*System.out.println("=========== CORE ================\n" +
-                "handleExposureParameter: " + parameterName + " VAL received: " + midiValue + "  event ACTION: " + guiEventName);*/
+       /* System.out.println("=========== CORE ================\n" +
+                "handleExposureParameter: " + event.getAction() + " VAL received: " + event.getValue());*/
+        ControlPanel panel = panels.get(event.getPanel());
+        int midiValue = event.getValue();
 
-        PTZCamera camera = panel.getAssignedCamera();
+        PTZCamera camera = cameraManager.getCoreAssignedCamera(panel.getId());
 
         if (camera == null) {
             return;
         }
 
-        String parameterInquiry = parameterName + "Position";
+        String parameterName = null;
+
+        switch (event.getAction()){
+            case "EXPOSURE_COMPENSATION":
+                if(panel.getStates().get(EXPOSURE_MODE) == ModeState.AUTO) {
+                    parameterName = "exposureCompensation";
+                }
+                if(panel.getStates().get(EXPOSURE_MODE) == ModeState.MANUAL) {
+                    parameterName = "exposureGain";
+                }
+                break;
+
+            case "EXPOSURE_GAIN":
+                if(panel.getStates().get(EXPOSURE_MODE) == ModeState.AUTO) {
+                    return;
+                }
+                parameterName =  "exposureGain";
+                break;
+
+            case "EXPOSURE_IRIS":
+                if(panel.getStates().get(EXPOSURE_MODE) == ModeState.AUTO) {
+                    return;
+                }
+                parameterName =  "exposureIris";
+                break;
+
+            case "EXPOSURE_SHUTTER":
+                if(panel.getStates().get(EXPOSURE_MODE) == ModeState.AUTO) {
+                    return;
+                }
+                parameterName =  "exposureShutter";
+                break;
+
+            case "WHITE_BALANCE_R_GAIN":
+                if(!camera.getParameter("whiteBalanceMode").getCurrentState().equalsIgnoreCase("manual")) {
+                    return;
+                }
+                parameterName =  "whiteBalanceRGain";
+                break;
+
+            case "WHITE_BALANCE_B_GAIN":
+                if(!camera.getParameter("whiteBalanceMode").getCurrentState().equalsIgnoreCase("manual")) {
+                    return;
+                }
+                parameterName =  "whiteBalanceBGain";
+                break;
+
+            default:
+                LOGGER.warning("Unsupported camera parameter");
+                return;
+        };
+
         //DEBUG
         //System.out.println("parameterInquiry string: " + parameterInquiry);
 
 
-        ParameterState parameter = camera.getParameter(parameterInquiry,true);
+        ParameterState parameter = camera.getParameter(parameterName + "Position",true);
 
         if (parameter == null) {
-            LOGGER.warning("No "+ parameterName + " in camera " + camera.getCameraId());
+            LOGGER.warning("No "+ event.getAction() + " parameter in camera " + camera.getCameraId());
             return;
         }
 
-        FieldDefinition field = camera.getController().getFieldDefinition(parameterInquiry);
+        FieldDefinition field = camera.getController().getFieldDefinition(parameterName+"Position");
         int targetValue = midiToMappedValue(midiValue,field);
         int currentValue = (int) parameter.getCurrent();
 
@@ -642,8 +690,8 @@ public class ControlCore {
             return;
         }
 
-        // MIDI control clutching
-        if (panel.getStates().get(Control.valueOf(guiEventName)) == ModeState.LOCK){
+        // TODO: MIDI control clutching
+        /*if (panel.getStates().get(Control.valueOf(guiEventName)) == ModeState.LOCK){
 
             int lastMidi = panel.getMidiCatch().get(Control.valueOf(guiEventName));
             int expectedMidi = mappedValueToMidi(currentValue, field);
@@ -659,7 +707,7 @@ public class ControlCore {
                 return;
             }
             panel.getStates().put(Control.valueOf(guiEventName), ModeState.ON);
-        }
+        }*/
 
 
         int minLevel = (int) parameter.getMin();
@@ -714,177 +762,218 @@ public class ControlCore {
 
         int normalizedMidi = mappedValueToMidi(targetValue, field);
 
-        ControlEvent event = new ControlEvent(
-                        SYSTEM,
-                        guiEventName,
-                        panel.getId(),
-                        guiEventName,
-                        normalizedMidi
-                );
+        ControlEvent returnEvent = new ControlEvent(
+                SYSTEM,
+                panel.getId(),
+                event.getAction(),
+                normalizedMidi
+        );
 
-        gui.handleControlEvent(event);
+        sendControlEvent(returnEvent);
+
         // DEBUG:
-        System.out.println("PARAMETER CHANGE EVENT SEND\n" + event.toString());
+        //System.out.println("PARAMETER CHANGE EVENT SEND\n" + event.toString());
     }
 
     /* ==============================================================================
                 HANDLE CAMERA MODES (PTZ move mode, exposition mode, automations)
        ==============================================================================*/
 
-    private void handlePTZMode(ControlPanel panel, Control control) {
+    private void handlePTZMode(ControlEvent event) {
+
+        ControlPanel panel = panels.get(event.getPanel());
+        Control control = Control.valueOf(event.getAction());
 
         if (panel.getStates().get(AUTO_FOLLOW) == ModeState.ON) {
             return;
         }
 
-        // ======= TILT MODE ==========
-        if (control == TILT) {
+        //DEBUG
+        System.out.println("PTZ Handler CONTROL: " + control);
 
+        // ======= TILT MODE ==========
+        if (control != PTZ_MODE) {
+            return;
+        }
         //DEBUG
         //System.out.println("Current ABS/JOY state: " + panel.getStates().get(TILT));
 
-            switch (panel.getStates().get(control)) {
-                case JOYSTICK:
-                    enterAbsoluteMode(panel, control);
-                    break;
+        switch (panel.getStates().get(control)) {
+            case JOYSTICK:
+                enterAbsoluteMode(event);
+                break;
 
-                case ABSOLUTE:
-                    ControlEvent stateRequest = new ControlEvent(
-                            SYSTEM,
-                            "TILT",
-                            panel.getId(),
-                            "STATUS_REQUEST",
-                            0
-                    );
-                    midiController.sendControlEvent(stateRequest);
-                    break;
+            case ABSOLUTE:
+               /* ControlEvent stateRequest = new ControlEvent(
+                        SYSTEM,
+                        panel.getId(),
+                        "STATUS_REQUEST",
+                        0
+                );*/
+                //midiController.sendControlEvent(stateRequest);
+                enterWaitNeutral(panel, control);
+                break;
 
-                case WAIT_NEUTRAL:
-                    break;
-            }
+            case WAIT_NEUTRAL:
+                break;
         }
     }
 
-    private void enterAbsoluteMode(ControlPanel panel, Control control) {
+    private void enterAbsoluteMode(ControlEvent event) {
 
+        ControlPanel panel = panels.get(event.getPanel());
+        Control control = Control.valueOf(event.getAction());
         panel.getStates().put(control, ModeState.ABSOLUTE);
         panel.setAcceptingPanTilt(true);
 
-        PTZCamera camera = panel.getAssignedCamera();
+        PTZCamera camera = cameraManager.getCoreAssignedCamera(panel.getId());
 
         if (camera == null) {
             return;
         }
 
-        updateIndicator(panel, "ABSOLUTE_MODE_INDICATOR", 1);
-
-        LOGGER.warning("Camera " + camera.getCameraId() + " position synchronization failed");
-
-        //Debug
-        /*if (camera.syncPosition()) {
-            System.out.println("PAN position: " + camera.getParameter("panPosition").getCurrent());
-            System.out.println("TILT position: " + camera.getParameter("tiltPosition").getCurrent());
-            System.out.println("ABS READY");
-        } else {
-
-            System.out.println("PAN position: " + camera.getParameter("panPosition").getCurrent());
-            System.out.println("TILT position: " + camera.getParameter("tiltPosition").getCurrent());
-            System.out.println("ABS SYNC FAILED");
-        }*/
-        //System.out.println("CONTROL CORE MODE STATUS: " + mode.toString());
-        //System.out.println( "MIDI event send: " + event.toString());
+        sendControlEvent(new ControlEvent(
+                SYSTEM,
+                panel.getId(),
+                "ABSOLUTE_MODE_INDICATOR",
+                1));
     }
 
     private void enterWaitNeutral(ControlPanel panel, Control control) {
 
-        panel.getStates().put(control, ModeState.WAIT_NEUTRAL);
+        //DEBUG
+        System.out.println("WAIT FOR NEUTRAL CONTROL: " + control);
+        panel.getStates().put(PTZ_MODE, ModeState.WAIT_NEUTRAL);
+        panel.getStates().put(TILT, ModeState.WAIT_NEUTRAL);
+        //panel.getStates().put(ZOOM, ModeState.WAIT_NEUTRAL);
         panel.setAcceptingPanTilt(false);
+        //panel.setAcceptingZoom(false);
 
-        ControlEvent event = new ControlEvent(
+        sendControlEvent (new ControlEvent(
                 SYSTEM,
-                "ABSOLUTE_MODE_INDICATOR",
                 panel.getId(),
                 "ABSOLUTE_MODE_INDICATOR",
-                2);
+                2));
 
-        if (mode == RunMode.FULL) {
-            midiController.sendControlEvent(event);
-        }
-        gui.handleControlEvent(event);
 
         System.out.println("WAITING FOR NEUTRAL");
     }
 
     private void enterJoystickMode(ControlPanel panel, Control control) {
 
-        panel.getStates().put(control, ModeState.JOYSTICK);
-        panel.setAcceptingPanTilt(true);
-        updateIndicator(panel, "ABSOLUTE_MODE_INDICATOR", 0);
-    }
+        panel.getStates().put(
+                control,
+                ModeState.JOYSTICK
+        );
 
-    private void handleTally(ControlPanel panel, Control control) {
+        boolean ready = panel.getStates().get(TILT) == ModeState.JOYSTICK;
+                        //&& panel.getStates().get(ZOOM) == ModeState.JOYSTICK;
 
-        if (control == TALLY) {
+        if (ready) {
 
-            PTZCamera camera = panel.getAssignedCamera();
+            panel.getStates().put(
+                    PTZ_MODE,
+                    ModeState.JOYSTICK
+            );
 
-            //DEBUG
-            //System.out.println("=> TALLY HANDLER " + panel.getStates().get(TALLY));
-            ControlEvent event = null;
-            ModeState tallyStatus = null;
+            panel.setAcceptingPanTilt(true);
 
-            if (panel.getStates().get(TALLY) == ModeState.OFF) {
-                camera.recallPreset("tally_On");
-                tallyStatus = ModeState.ON;
-                updateIndicator(panel, "TALLY_INDICATOR", 1);
-            }
-            if (panel.getStates().get(TALLY) == ModeState.ON) {
-                camera.recallPreset("tally_Off");
-                tallyStatus = ModeState.OFF;
-                updateIndicator(panel, "TALLY_INDICATOR", 0);
-            }
-
-            panel.getStates().put(TALLY, tallyStatus);
+            sendControlEvent(new ControlEvent(
+                    SYSTEM,
+                    panel.getId(),
+                    "ABSOLUTE_MODE_INDICATOR",
+                    0
+            ));
         }
     }
 
-    private void handleAutoFollow(ControlPanel panel, Control control) {
+    private void handleTally(ControlEvent event) {
 
-        if (control == AUTO_FOLLOW) {
+        Control control = Control.valueOf(event.getAction());
 
-            PTZCamera camera = panel.getAssignedCamera();
-
-            //DEBUG
-            //System.out.println("=> ATOFOLLOW HANDLER " + panel.getStates().get(TALLY));
-            ControlEvent event = null;
-            ModeState autoFollowStatus = null;
-
-            if (panel.getStates().get(AUTO_FOLLOW) == ModeState.OFF) {
-                camera.recallPreset("smartShoot_On");
-                autoFollowStatus = ModeState.ON;
-                updateIndicator(panel, "AUTO_SHOOT_INDICATOR", 1);
-            }
-
-            if (panel.getStates().get(AUTO_FOLLOW) == ModeState.ON) {
-                camera.recallPreset("smartShoot_Off");
-                autoFollowStatus = ModeState.OFF;
-                updateIndicator(panel, "AUTO_SHOOT_INDICATOR", 0);
-            }
-
-            panel.getStates().put(AUTO_FOLLOW, autoFollowStatus);
-        }
-    }
-
-    private void handleExposureMode(ControlPanel panel,Control control) {
-
-        if (control != EXPOSURE_MODE){
+        if (control != TALLY) {
             return;
         }
 
-        PTZCamera camera = panel.getAssignedCamera();
+        ControlPanel panel = panels.get(event.getPanel());
+        PTZCamera camera = cameraManager.getCoreAssignedCamera(panel.getId());
+
+        //DEBUG
+        //System.out.println("=> TALLY HANDLER " + panel.getStates().get(TALLY));
+        ModeState tallyStatus = null;
+
+        if (panel.getStates().get(TALLY) == ModeState.OFF) {
+            camera.recallPreset("tally_On");
+            tallyStatus = ModeState.ON;
+            sendControlEvent(new ControlEvent(SYSTEM,
+                    panel.getId(),
+                    "TALLY_INDICATOR",
+                    1));
+        }
+        if (panel.getStates().get(TALLY) == ModeState.ON) {
+            camera.recallPreset("tally_Off");
+            tallyStatus = ModeState.OFF;
+            sendControlEvent(new ControlEvent(SYSTEM,
+                    panel.getId(),
+                    "TALLY_INDICATOR",
+                    0));
+        }
+
+        panel.getStates().put(TALLY, tallyStatus);
+
+    }
+
+    private void handleAutoFollow( ControlEvent event) {
+
+        Control control = Control.valueOf(event.getAction());
+
+        if (control != AUTO_FOLLOW) {
+            return;
+        }
+
+        ControlPanel panel = panels.get(event.getPanel());
+        PTZCamera camera = cameraManager.getCoreAssignedCamera(panel.getId());
+
+        //DEBUG
+        //System.out.println("=> ATOFOLLOW HANDLER " + panel.getStates().get(TALLY));
+        ModeState autoFollowStatus = null;
+
+        if (panel.getStates().get(AUTO_FOLLOW) == ModeState.OFF) {
+            camera.recallPreset("smartShoot_On");
+            autoFollowStatus = ModeState.ON;
+            sendControlEvent(new ControlEvent (
+                    SYSTEM,
+                    panel.getId(),
+                    "AUTO_FOLLOW_INDICATOR",
+                    1));
+        }
+
+        if (panel.getStates().get(AUTO_FOLLOW) == ModeState.ON) {
+            camera.recallPreset("smartShoot_Off");
+            autoFollowStatus = ModeState.OFF;
+            sendControlEvent(new ControlEvent (
+                    SYSTEM,
+                    panel.getId(),
+                    "AUTO_FOLLOW_INDICATOR",
+                    0));
+        }
+
+        panel.getStates().put(AUTO_FOLLOW, autoFollowStatus);
+        }
+
+    private void handleExposureMode(ControlEvent event) {
+
+        //DEBUG
+        //System.out.println("Handle exposure mode ACTION:" + event.getAction());
+        if (!event.getAction().equals("EXPOSURE_MODE")){
+            return;
+        }
+
+        ControlPanel panel = panels.get(event.getPanel());
+        PTZCamera camera = cameraManager.getCoreAssignedCamera(panel.getId());
         ModeState nextMode;
 
-        ControlEvent event = null;
+        ControlEvent returnEvent = null;
         Map <String, Object> params = new HashMap<>();
 
         switch (panel.getStates().get(EXPOSURE_MODE)
@@ -896,22 +985,19 @@ public class ControlCore {
                 camera.setExposureMode("AUTO");
                 //panel.getStates().put(EXPOSURE_IRIS, ModeState.LOCK);
                 //panel.getStates().put(EXPOSURE_IRIS, ModeState.LOCK);
-                event = new ControlEvent(
+                /*midiController.sendControlEvent(new ControlEvent(
                         SYSTEM,
-                        "EXPOSURE_COMPENSATION",
                         panel.getId(),
                         "STATUS_REQUEST",
                         0
+                ));*/
 
-                );
-                midiController.sendControlEvent(event);
-
-                event = new ControlEvent(
+                sendControlEvent(new ControlEvent(
                         SYSTEM,
-                        "EXPOSURE_MODE_INDICATOR",
                         panel.getId(),
                         "EXPOSURE_MODE_INDICATOR",
-                        1);
+                        1
+                ));
                 break;
 
             case AUTO:
@@ -922,50 +1008,40 @@ public class ControlCore {
 
                 //---- gain clutching
                 //camera.getParameter("exposureGainPosition", true);
-                event = new ControlEvent(
+               /* midiController.sendControlEvent(new ControlEvent(
                         SYSTEM,
-                        "EXPOSURE_COMPENSATION",
                         panel.getId(),
                         "STATUS_REQUEST",
                         0
-
-                );
+                ));*/
                 //panel.getStates().put(EXPOSURE_GAIN, ModeState.LOCK);
-                midiController.sendControlEvent(event);
 
                 //-- iris clutching
                 //camera.getParameter("exposureIrisPosition", true);
-                event = new ControlEvent(
+               /* midiController.sendControlEvent(new ControlEvent(
                         SYSTEM,
-                        "EXPOSURE_IRIS",
                         panel.getId(),
                         "STATUS_REQUEST",
                         0
-
-                );
+                ));*/
                 //panel.getStates().put(EXPOSURE_IRIS, ModeState.LOCK);
-                midiController.sendControlEvent(event);
 
                 //---- shutter clutching
                 //camera.getParameter("exposureIrisPosition", true);
-                event = new ControlEvent(
+               /* midiController.sendControlEvent(new ControlEvent(
                         SYSTEM,
-                        "EXPOSURE_SHUTTER",
                         panel.getId(),
                         "STATUS_REQUEST",
                         0
-
-                );
+                ));*/
                 //panel.getStates().put(EXPOSURE_SHUTTER, ModeState.LOCK);
-                midiController.sendControlEvent(event);
 
                 //--- mode indicator event
-                event = new ControlEvent(
+                sendControlEvent(new ControlEvent(
                         SYSTEM,
-                        "EXPOSURE_MODE_INDICATOR",
                         panel.getId(),
                         "EXPOSURE_MODE_INDICATOR",
-                        0);
+                        0));
                 break;
 
             default:
@@ -973,26 +1049,23 @@ public class ControlCore {
                 /*params.put("exposureMode", "AUTO");
                 camera.executeViscaCommand("exposureMode", params);*/
                 camera.setExposureMode("AUTO");
-                event = new ControlEvent(
+                sendControlEvent( new ControlEvent(
                         SYSTEM,
-                        "EXPOSURE_MODE_INDICATOR",
                         panel.getId(),
                         "EXPOSURE_MODE_INDICATOR",
-                        0);
-
+                        0));
         }
 
         panel.getStates().put(EXPOSURE_MODE, nextMode);
 
-        if (mode == RunMode.FULL) {
-            midiController.sendControlEvent(event);
-        }
-        gui.handleControlEvent(event);
+        //sendControlEvent(returnEvent);
     }
 
-    private void handleWBMode(ControlPanel panel, int value) {
+    private void handleWBMode(ControlEvent event) {
 
-        PTZCamera camera = panel.getAssignedCamera();
+        ControlPanel panel = panels.get(event.getPanel());
+        PTZCamera camera = cameraManager.getCoreAssignedCamera(panel.getId());
+        int value = event.getValue();
 
         if (camera == null) {
             return;
@@ -1017,12 +1090,14 @@ public class ControlCore {
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("Uknown WB Mode: " + targetMode));
 
+
+
         Map<String,Object> params = new HashMap<>();
 
         ParameterState param = new ParameterState();
         param.setCurrentState("OFF");
         camera.getParameters().put("onePushWBal", param);
-        ControlEvent event = null;
+        ControlEvent returnEvent = null;
 
         if (targetModeName.equalsIgnoreCase("ONE_PUSH")){
             //debug
@@ -1033,28 +1108,23 @@ public class ControlCore {
             //DEBUG
            // System.out.println(camera.getParameters().get("onePushWBal").toString());
 
-            event = new ControlEvent(
+            returnEvent = new ControlEvent(
                     SYSTEM,
-                    "WHITE_BALANCE_PUSH_INDICATOR",
                     panel.getId(),
                     "WHITE_BALANCE_PUSH_INDICATOR",
                     2
             );
         } else {
-            event = new ControlEvent(
+            returnEvent = new ControlEvent(
                     SYSTEM,
-                    "WHITE_BALANCE_PUSH_INDICATOR",
                     panel.getId(),
                     "WHITE_BALANCE_PUSH_INDICATOR",
                     0
             );
         }
 
-        gui.handleControlEvent(event);
 
-        if (mode == RunMode.FULL) {
-            midiController.sendControlEvent(event);
-        }
+        sendControlEvent(returnEvent);
 
         params.put("whiteBalanceMode",targetModeName);
 
@@ -1067,10 +1137,10 @@ public class ControlCore {
         camera.getParameter("whiteBalanceMode").setCurrent(targetMode);
         camera.getParameter("whiteBalanceMode").setCurrentState(targetModeName);
 
-        gui.handleControlEvent(
+
+        sendControlEvent(
                 new ControlEvent(
                         SYSTEM,
-                        "WHITE_BALANCE_MODE",
                         panel.getId(),
                         "WHITE_BALANCE_MODE",
                         value
@@ -1078,75 +1148,68 @@ public class ControlCore {
         );
     }
 
-    private void handleWBPush(ControlPanel panel, Control control, int value) {
+    private void handleWBPush(ControlEvent event) {
 
-        if (control == WHITE_BALANCE_PUSH && value != 0) {
-
-            PTZCamera camera = panel.getAssignedCamera();
-            if (camera == null){
-                return;
-            }
-
-            //DEBUG
-           // System.out.println("=> WB ONE PUSH value received = " + value + "\n"+
-            //        "timestamp: " + System.currentTimeMillis() + "  THREAD: " + Thread.currentThread().getName());
-            //System.out.println(camera.getParameters().keySet());
-
-            ParameterState param = camera.getParameter("onePushWBal");
-
-            //DEBUG
-            //System.out.println("WBAL PARAM: " + param.toString());
-
-            ControlEvent event = null;
-            String newState = "LOCK";
-
-            //DEBUG
-            //System.out.println("CURRENT STATE = " + param.getCurrentState());
-
-            switch (param.getCurrentState()){
-                case "ACTIVE":
-                    camera.onePushWBal();
-                    event = new ControlEvent(
-                            SYSTEM,
-                            "WHITE_BALANCE_PUSH_INDICATOR",
-                            panel.getId(),
-                            "WHITE_BALANCE_PUSH_INDICATOR",
-                            0
-                    );
-                    newState = "ON";
-
-                    //DEBUG
-                    //System.out.println("+>>  TRIGGERED");
-                    break;
-
-                case "ON":
-                    event = new ControlEvent(
-                            SYSTEM,
-                            "WHITE_BALANCE_PUSH_INDICATOR",
-                            panel.getId(),
-                            "WHITE_BALANCE_PUSH_INDICATOR",
-                            2
-                    );
-                    newState = "ACTIVE";
-                    //DEBUG
-                    //System.out.println("+>>  ACTIVATED");
-                    break;
-
-                default:
-                    System.out.println("ONE PUSH LOCKED");
-                    newState = "OFF";
-                    break;
-            }
-
-            if (event != null) {
-                gui.handleControlEvent(event);
-
-                if (mode == RunMode.FULL) {
-                    midiController.sendControlEvent(event);
-                }
-            }
-            camera.getParameter("onePushWBal").setCurrentState(newState);
+        if (!Objects.equals(event.getAction(), "WHITE_BALANCE_PUSH") && event.getValue() == 0){
+            return;
         }
+        ControlPanel panel = panels.get(event.getPanel());
+        PTZCamera camera = cameraManager.getCoreAssignedCamera(panel.getId());
+        if (camera == null){
+            return;
+        }
+
+        //DEBUG
+       // System.out.println("=> WB ONE PUSH value received = " + value + "\n"+
+        //        "timestamp: " + System.currentTimeMillis() + "  THREAD: " + Thread.currentThread().getName());
+        //System.out.println(camera.getParameters().keySet());
+
+        ParameterState param = camera.getParameter("onePushWBal");
+
+        //DEBUG
+        //System.out.println("WBAL PARAM: " + param.toString());
+
+        ControlEvent returnEvent = null;
+        String newState = "LOCK";
+
+        //DEBUG
+        //System.out.println("CURRENT STATE = " + param.getCurrentState());
+
+        switch (param.getCurrentState()){
+            case "ACTIVE":
+                camera.onePushWBal();
+                returnEvent = new ControlEvent(
+                        SYSTEM,
+                        panel.getId(),
+                        "WHITE_BALANCE_PUSH_INDICATOR",
+                        0
+                );
+                newState = "ON";
+
+                //DEBUG
+                //System.out.println("+>>  TRIGGERED");
+                break;
+
+            case "ON":
+                returnEvent = new ControlEvent(
+                        SYSTEM,
+                        panel.getId(),
+                        "WHITE_BALANCE_PUSH_INDICATOR",
+                        2
+                );
+                newState = "ACTIVE";
+                //DEBUG
+                //System.out.println("+>>  ACTIVATED");
+                break;
+
+            default:
+                //System.out.println("ONE PUSH LOCKED");
+                newState = "OFF";
+                break;
+        }
+
+        sendControlEvent(returnEvent);
+        camera.getParameter("onePushWBal").setCurrentState(newState);
     }
 
     private boolean isNeutral(int v) {
@@ -1164,7 +1227,7 @@ public class ControlCore {
 
         int expectedMidi = -1;
 
-        switch (event.getControlID()) {
+        switch (event.getAction()) {
 
             case "EXPOSURE_COMPENSATION":
                  if (ModeState.MANUAL.equals(panel.getStates().get("EXPOSURE_MODE"))) {
@@ -1224,17 +1287,19 @@ public class ControlCore {
                 + panel.getMidiCatch().toString());*/
     }
 
-    private void handleFocus(ControlPanel panel, ControlEvent event){
+    private void handleFocus(ControlEvent event){
         //TODO: handling
         //DEBUG
         //System.out.println ("Focus parameter recived: " + event.getValue() + "\nFocus event recived: " + event.getAction());
+
+        ControlPanel panel = panels.get(event.getPanel());
 
         //Locked ind AutoFollow Mode
         if (panel.getStates().get(AUTO_FOLLOW) == ModeState.ON ) {
             return;
         }
 
-        PTZCamera camera = panel.getAssignedCamera();
+        PTZCamera camera = cameraManager.getCoreAssignedCamera(panel.getId());
 
         if (camera == null) {return;}
 
@@ -1280,108 +1345,190 @@ public class ControlCore {
 
         int newValue = mappedValueToMidi(focusPosition, focusField);
 
-        returnEvent =
-                new ControlEvent(
+        sendControlEvent(new ControlEvent(
                         SYSTEM,
-                        "FOCUS",
                         panel.getId(),
                         "FOCUS",
                         newValue
-                );
-
-        if (event != null) {
-            gui.handleControlEvent(returnEvent);
-        }
+                ));
     }
 
-    private void handleFocusOnePush (ControlPanel panel, Control control, int value){
+    private void handleFocusOnePush (ControlEvent event){
 
         //DEBUG
-        if (value ==1 && control == FOCUS){
-        //System.out.println ("Focus ONE PUSH automation triggered");
-        panel.getAssignedCamera().onePushAutofocus();
+        //System.out.println("ONE PUSH FOCUS event: " + event.toString());
+        if (event.getValue() == 1 && event.getAction().equals("ONE_PUSH_FOCUS_KEY")){
+            ControlPanel panel = panels.get(event.getPanel());
+            PTZCamera camera = cameraManager.getCoreAssignedCamera(panel.getId());
+            if (camera != null){
+                camera.onePushAutofocus();
+            }
         }
 
     }
+
+    /* ==================================
+          INITIALIZATION HELPERS
+     ====================================*/
 
     private void initializeStatusIndicators() {
 
         for (ControlPanel panel : panels.values()) {
 
-            updateIndicator(panel,
-                    "ABSOLUTE_MODE_INDICATOR",
-                    panel.getStates().get(TILT) == ModeState.ABSOLUTE ? 1 : 0 );
+            sendControlEvent(
+                    new ControlEvent(
+                            SYSTEM,
+                            panel.getId(),
+                            "ABSOLUTE_MODE_INDICATOR",
+                            panel.getStates().get(TILT) == ModeState.ABSOLUTE ? 1 : 0
+                    )
+            );
 
-            updateIndicator(
-                    panel,
-                    "AUTO_SHOOT_INDICATOR",
-                    panel.getStates().get(AUTO_FOLLOW) == ModeState.OFF ? 0: 1);
+            sendControlEvent(
+                    new ControlEvent(
+                            SYSTEM,
+                            panel.getId(),
+                            "AUTO_FOLLOW_INDICATOR",
+                            panel.getStates().get(AUTO_FOLLOW) == ModeState.OFF ? 0 : 1
+                    )
+            );
 
-            updateIndicator(
-                    panel,
-                    "FOCUS_MODE_INDICATOR",
-                    panel.getStates().get(FOCUS_MODE) == ModeState.AUTO ? 1: 0);
+            sendControlEvent(
+                    new ControlEvent(
+                            SYSTEM,
+                            panel.getId(),
+                            "ONE_PUSH_FOCUS_INDICATOR",
+                            0
+                    )
+            );
 
-            updateIndicator(
-                    panel,
-                    "ONE_PUSH_FOCUS_INDICATOR",
-                    panel.getStates().get(FOCUS_MODE) == ModeState.AUTO ? 0: 2);
+            sendControlEvent(
+                    new ControlEvent(
+                            SYSTEM,
+                            panel.getId(),
+                            "FOCUS_MODE_INDICATOR",
+                            panel.getStates().get(FOCUS_MODE) == ModeState.AUTO ? 1 : 0
+                    )
+            );
 
-            updateIndicator(
-                    panel,
-                    "EXPOSURE_MODE_INDICATOR",
-                    panel.getStates().get(EXPOSURE_MODE) == ModeState.AUTO ? 1 : 0);
+            sendControlEvent(
+                    new ControlEvent(
+                            SYSTEM,
+                            panel.getId(),
+                            "EXPOSURE_MODE_INDICATOR",
+                            panel.getStates().get(EXPOSURE_MODE) == ModeState.AUTO ? 1 : 0
+                    )
+            );
 
-            updateIndicator(
-                    panel,
-                    "WHITE_BALANCE_MODE",
-                    0);
+            sendControlEvent(
+                    new ControlEvent(
+                            SYSTEM,
+                            panel.getId(),
+                            "WHITE_BALANCE_PUSH_INDICATOR",
+                            0
+                    )
+            );
 
-            updateIndicator(
-                    panel,
-                    "TALLY_INDICATOR",
-                    0);
+            sendControlEvent(
+                    new ControlEvent(
+                            SYSTEM,
+                            panel.getId(),
+                            "TALLY_INDICATOR",
+                            0
+                    )
+            );
+
+            sendControlEvent(
+                    new ControlEvent(
+                            SYSTEM,
+                            panel.getId(),
+                            "PANEL_SELECT_INDICATOR",
+                            panel.getId() == A ? 1 : 0
+                    )
+            );
         }
     }
 
-    private void updateIndicator(ControlPanel panel, String action, int value) {
+    private void updateCameraIndicators() {
 
-        ControlEvent event = new ControlEvent(
-                SYSTEM,
-                action,
-                panel.getId(),
-                action,
-                value
-        );
-
-        if (mode == RunMode.FULL) {
-            midiController.sendControlEvent(event);
+        if(mode != RunMode.FULL){
+            return;
         }
-        gui.handleControlEvent(event);
 
+        for (ControlPanel panel : panels.values()) {
+
+            PTZCamera camera = cameraManager.getCoreAssignedCamera(panel.getId());
+
+            if (camera == null) {
+                continue;
+            }
+
+            int selectedCamera = switch (camera.getCameraId()) {
+                case "CAM_A" -> 1;
+                case "CAM_B" -> 2;
+                case "CAM_C" -> 3;
+                case "CAM_D" -> 4;
+                default -> 0;
+            };
+
+            for (int i = 1; i <= 4; i++) {
+
+                sendControlEvent(new ControlEvent(
+                        SYSTEM,
+                        panel.getId(),
+                        "CAM_SELECT_" + i + "_INDICATOR",
+                        i == selectedCamera ? 1 : 0));
+            }
+        }
     }
 
     /* ==========================================
              ZARZĄDANIE I STEROWANIE KAMERAMI
        ==========================================*/
 
-    public void assignCamera(ControlPanelId panel, PTZCamera camera) {
+    public void assignToMidiPanel(ControlPanelId midiPanel, ControlPanelId corePanel) {
 
-        panels.get(panel).setAssignedCamera(camera);
+        midiManager.assignMidiPanel(midiPanel, corePanel);
+
         //DEBUG do testów
-        System.out.println(panel + " -> " + camera.getCameraId());
+        System.out.println("MIDI panel " + midiPanel + " ->  CORE panel " + corePanel);
     }
 
-    private PTZCamera getCamera(ControlPanelId panel) {
+    private void handleCameraSelect(ControlEvent event) {
 
-        return panels.get(panel).getAssignedCamera();
+        if (event.getValue() == 0) {
+            return;
+        }
+
+        // panel CORE wskazany przez przycisk CAMERA_SELECT_X
+        ControlPanelId targetCorePanel = ControlPanelId.valueOf(event.getAction().substring("CAMERA_SELECT_".length()));
+
+        // panel MIDI, na którym naciśnięto przycisk
+        ControlPanelId midiPanel = event.getPanel();
+
+        ControlPanelId currentMidiBinding = midiManager.getMidiBinding(targetCorePanel);
+
+        // już przypisany
+        if (currentMidiBinding == midiPanel) {
+            System.out.println("CORE PANEL "+ targetCorePanel+ " ALREADY ASSIGNED TO MIDI PANEL "+ midiPanel);
+            return;
+        }
+
+        System.out.println("ASSIGN MIDI PANEL " + midiPanel + " -> CORE PANEL " + targetCorePanel);
+
+        midiManager.assignMidiPanel(midiPanel,targetCorePanel);
+
+        updateCameraIndicators();
+        gui.refreshPanelBindings();
     }
+
+
 
     /* ============================
              METODY POMOCNICZE
        ============================
 */
-    //kalkulatory
+    //------ calculators
 
     @SuppressWarnings("unchecked")
     private double midiToDegrees(PTZCamera camera,String fieldName,int midiValue) {
@@ -1552,7 +1699,7 @@ public class ControlCore {
         return (int) Math.round(mappedValue * 127.0 / mappedMax);
     }
 
-    //Gettery i settery
+    //--------   GETTERS, SETTER, SUPPORTS
 
     public void setGUI (MainGUI gui){
         this.gui = gui;
@@ -1562,7 +1709,65 @@ public class ControlCore {
         if (this.gui != null) {
             initializeStatusIndicators();
         }
+        if (mode == RunMode.FULL){
+            updateCameraIndicators();
+        }
     }
 
+    private void sendControlEvent(ControlEvent event) {
 
+        ControlPanelId midiPanel =
+                midiManager.getMidiBinding(event.getPanel());
+
+        if (midiPanel != null && mode == RunMode.FULL) {
+
+            ControlEvent midiEvent = new ControlEvent(
+                    SYSTEM,
+                    midiPanel,
+                    event.getAction(),
+                    event.getValue()
+            );
+
+            // DEBUG
+            //System.out.println("CORE EVENT ROUTING ==> MIDI: " + midiPanel + " ---> GUI PANEL: " + event.getPanel());
+
+            midiController.sendControlEvent(midiEvent);
+        }
+        gui.handleControlEvent(event);
+    }
+
+    private ControlPanel createPanel(ControlPanelId panelId) {
+
+        ControlPanel panel = new ControlPanel(panelId);
+
+        panel.getStates().put(PTZ_MODE,ModeState.JOYSTICK);
+        panel.getStates().put(FOCUS, ModeState.AUTO);
+        panel.getStates().put(TALLY,ModeState.OFF);
+        panel.getStates().put(AUTO_FOLLOW,ModeState.OFF);
+        panel.getStates().put(EXPOSURE_MODE,ModeState.AUTO);
+        panel.getStates().put(FOCUS_MODE,ModeState.AUTO);
+        panel.getStates().put(WHITE_BALANCE_MODE,ModeState.AUTO);
+        panel.setAcceptingPanTilt(true);
+        return panel;
+    }
+
+    private ControlPanelId resolveControlPanel(ControlEvent event) {
+
+        switch (event.getEventSource()) {
+
+            case MIDI: {
+                String guiPanel = cameraManager.CorePanelBinding(event.getPanel());
+                return guiPanel == null
+                        ? null
+                        : ControlPanelId.valueOf(guiPanel);
+            }
+
+            case GUI:
+            case SYSTEM:
+                return event.getPanel();
+
+            default:
+                return null;
+        }
+    }
 }

@@ -15,7 +15,7 @@ public class ControlPanel {
 
     private final ControlCore.ControlPanelId id;
 
-    private PTZCamera assignedCamera;
+    //private PTZCamera assignedCamera;
 
     private boolean acceptingPanTilt;
     private long jogTimestamp;
@@ -34,5 +34,6 @@ public class ControlPanel {
     public void updateJogTimestamp(){
         this.jogTimestamp = System.currentTimeMillis();
     }
+
 
 }

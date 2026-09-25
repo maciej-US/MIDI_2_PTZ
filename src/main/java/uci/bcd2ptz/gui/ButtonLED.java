@@ -83,6 +83,8 @@ public class ButtonLED extends JComponent {
 
     // ===== API =====
     public void setMode(LedMode mode) {
+        //debug
+        //System.out.println("LED_BUTTON " + label + " mode triggered. VAL =  " + mode);
         this.mode = mode;
         repaint();
     }
@@ -101,11 +103,6 @@ public class ButtonLED extends JComponent {
         }
     }
 
-
-    public void setLight(boolean isOn) {
-        this.mode = isOn ? LedMode.ON : LedMode.OFF;
-        repaint();
-    }
 
     // ===== ROZMIAR NA SZTYWNO =====
     @Override
