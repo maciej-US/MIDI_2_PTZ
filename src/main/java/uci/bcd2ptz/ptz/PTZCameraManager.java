@@ -1,6 +1,8 @@
 package uci.bcd2ptz.ptz;
 
 import uci.bcd2ptz.core.ControlCore.*;
+import uci.bcd2ptz.core.ControlEvent;
+import uci.bcd2ptz.core.ControlEventBus;
 import uci.bcd2ptz.visca.ViscaConfig;
 
 import java.io.IOException;
@@ -12,6 +14,8 @@ import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
+
+import static uci.bcd2ptz.core.ControlEvent.EventSource.SYSTEM;
 
 public class PTZCameraManager {
 
@@ -26,8 +30,11 @@ public class PTZCameraManager {
     private DatagramSocket socket = null;
 
     private static final Logger LOGGER = Logger.getLogger(PTZCameraManager.class.getName());
+    private ControlEventBus inputBus;
 
-    public PTZCameraManager(String localIP, int localPort)  {
+    public PTZCameraManager(String localIP, int localPort, ControlEventBus eventBus)  {
+
+        this.inputBus = eventBus;
 
         try {
             this.socket = new DatagramSocket(null);
@@ -56,6 +63,7 @@ public class PTZCameraManager {
                                 pending.getResponses().put(Arrays.copyOf(
                                                 packet.getData(),
                                                 packet.getLength()));
+                                pending.markResponseReceived();
                             }
                         }catch (IOException e){
                             LOGGER.warning("Communication error for camera on " + packet.getAddress() +":" + packet.getPort());
@@ -104,8 +112,7 @@ public class PTZCameraManager {
               CAMERA MANAGEMENT
        ==================================*/
 
-    public PTZCamera getCamera(
-            String cameraId) {
+    public PTZCamera getCamera(String cameraId) {
 
         PTZCamera camera = cameras.get(cameraId);
 
@@ -118,10 +125,10 @@ public class PTZCameraManager {
         return camera;
     }
 
-    public PTZCamera addCamera(String cameraId, String ipAddress, int cameraPort, int localPort, ViscaConfig config,
+    public PTZCamera addCamera(String cameraId, String ipAddress, int cameraPort, int localPort, int socketTimeout, String displayName, ViscaConfig config,
                                ControlPanelId assignedCorePanel, ControlPanelId assignedMidiPanel) throws Exception {
 
-        PTZCamera camera = new PTZCamera(cameraId, ipAddress, cameraPort, localPort, config, this);
+        PTZCamera camera = new PTZCamera(cameraId, ipAddress, cameraPort, localPort, socketTimeout, displayName, config, this);
 
         camera.setIpAddress(ipAddress);
         camera.setCameraPort(cameraPort);
@@ -184,28 +191,36 @@ public class PTZCameraManager {
         return guiPanelAssignments.get(panel);
     }
 
-    /*public PTZCamera getMidiAssignedCamera(ControlPanelId panel) {
+    private ControlPanelId getAssignedCorePanel(PTZCamera camera) {
 
-        return midiPanelAssignments.get(panel);
-    }*/
+        for (Map.Entry<ControlPanelId, PTZCamera> entry
+                : guiPanelAssignments.entrySet()) {
 
-    /*public String getMidiPanelBinding(ControlPanelId corePanel) {
-
-        PTZCamera camera = guiPanelAssignments.get(corePanel);
-
-        if (camera == null) {
-            return null;
-        }
-
-        for (Map.Entry<ControlPanelId, PTZCamera> entry : midiPanelAssignments.entrySet()) {
-
-            if (camera.equals(entry.getValue())) {
-                return entry.getKey().name();
+            if (entry.getValue() == camera) {
+                return entry.getKey();
             }
         }
 
         return null;
-    }*/
+    }
+
+    public boolean isCameraOnline (ControlPanelId panel) {
+
+        PTZCamera camera = getCoreAssignedCamera(panel);
+
+        if (camera == null) {
+            System.out.println ("NO ASSIGNED CAMERA PANEL: " + panel);
+            return false;
+        }
+        return camera.isOnline();
+    }
+
+    public boolean testConnection(ControlPanelId panelId, String ip,int port,String configPath){
+        //SCAFF
+        System.out.println("TESTING CONNECTION for IP " + ip + ":" + port + "\nCONFIG FILE: " + configPath);
+
+        return true;
+    }
 
     public String CorePanelBinding(ControlPanelId midiPanel) {
 
@@ -229,11 +244,91 @@ public class PTZCameraManager {
         return cameras;
     }
 
-    /*public String getMidiAssignements(){
-        return midiPanelAssignments.toString();
-    }*/
-
     public String getCoreAssignements(){
         return guiPanelAssignments.toString();
     }
+
+    public String getCameraDescription (ControlPanelId panel){
+
+        PTZCamera camera = getCoreAssignedCamera(panel);
+
+        if (camera == null) {
+            return "";
+        }
+        return camera.getDescription();
+
+    }
+
+    public void notifyCameraStatusChanged(PTZCamera camera, boolean online) {
+
+        //DEBUG
+        //System.out.println("STATUS EVENT => "+ camera.getCameraId() + " ONLINE=" + online + " CALLER=" + Thread.currentThread().getStackTrace()[2]);
+
+        ControlPanelId panel = getAssignedCorePanel(camera);
+
+        ControlEvent event =
+                new ControlEvent(
+                        SYSTEM,
+                        panel,
+                        "UPDATE_CAMERA_STATUS",
+                        online ? 1 : 0
+                );
+
+        this.inputBus.publish(event);
+    }
+
+    public boolean refreshConnection(ControlPanelId panelId) {
+
+        PTZCamera camera = getCoreAssignedCamera(panelId);
+
+        if (camera == null) {
+            LOGGER.warning("No camera assigned to panel " + panelId);
+            return false;
+        }
+
+        try {
+            int powerStatus = camera.powerStatusRequest();
+
+            switch (powerStatus) {
+                case -1:
+                    LOGGER.warning("Camera " + camera.getCameraId() + " does not respond.");
+                    camera.markOffline();
+                    notifyCameraStatusChanged(camera,false);
+                    return false;
+
+                case 0:
+                    LOGGER.info("Camera " + camera.getCameraId() + " is powered OFF. Sending POWER ON.");
+                    camera.setPower(true);
+                    Thread.sleep(1000);
+                    powerStatus = camera.powerStatusRequest();
+                    if (powerStatus == 1) {
+                        camera.markOnline();
+                        notifyCameraStatusChanged(camera,true);
+                        return true;
+                    }
+
+                    camera.markOffline();
+                    notifyCameraStatusChanged(camera,false);
+                    return false;
+
+                case 1:
+                    camera.markOnline();
+                    notifyCameraStatusChanged(camera,true);
+                    return true;
+
+                default:
+                    LOGGER.warning("Unknown power status for camera " + camera.getCameraId() + ": " + powerStatus);
+                    camera.markOffline();
+                    notifyCameraStatusChanged(camera,false);
+                    return false;
+            }
+
+        } catch (Exception e) {
+            camera.markOffline();
+            notifyCameraStatusChanged(camera,false);
+            LOGGER.warning("Refresh connection failed for " + camera.getCameraId());
+            return false;
+        }
+    }
+
 }

@@ -14,6 +14,8 @@ public class AppConfig {
 
     private Map<String, Object> presets;
 
+
+
     public SystemConfig getSystem() {
         return system;
     }
@@ -72,9 +74,15 @@ public class AppConfig {
             return guiConstraints;
         }
 
-        public void setGuiConstraints(GuiConstraints guiConstraints) {
-            this.guiConstraints = guiConstraints;
-        }
+        public void setGuiConstraints(GuiConstraints guiConstraints) {this.guiConstraints = guiConstraints;}
+
+        private Map<String, Object> transport;
+
+        public Map<String, Object> getTransport() {return transport; }
+
+        public void setTransport(Map<String, Object> transport) { this.transport = transport; }
+
+
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -231,5 +239,21 @@ public class AppConfig {
         }
     }
 
+
+    //TRANSPORT
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class Transport{
+
+        private long socketTimeout;
+
+        public long getSocketTimeout() {
+            return this.socketTimeout;
+        }
+
+        public void setSocketTimeout(long socketTimeout) {
+            this.socketTimeout = socketTimeout;
+        }
+
+    }
 
 }

@@ -1,11 +1,9 @@
 package uci.bcd2ptz.gui;
 
 import uci.bcd2ptz.AppConfig;
-import uci.bcd2ptz.core.ControlCore;
-import uci.bcd2ptz.core.ControlEvent;
-import uci.bcd2ptz.core.ControlEventBus;
-import uci.bcd2ptz.core.ControlEventListener;
+import uci.bcd2ptz.core.*;
 import uci.bcd2ptz.midi.MidiControllerManager;
+import uci.bcd2ptz.ptz.PTZCamera;
 import uci.bcd2ptz.ptz.PTZCameraManager;
 import uci.bcd2ptz.visca.FieldDefinition;
 
@@ -56,10 +54,14 @@ public class GUIPanel
     //INDICATORS
     private final OnAirIndicator onAirIndicator = new OnAirIndicator();
     private Dseg14Display midiPanelInfo = null;
+    JLabel cameraLabel = null;
+    JLabel statusInfo = null;
 
     //==================== VISUAL CONSTANSTS =================
     Color labelColor = new Color(200, 200, 200);
     Color backgroundColor = new Color(40, 40, 40);
+    private final Color okColor = new Color (0, 150, 0);
+    private final Color errorColor = new Color (200, 0, 0);
 
     // ==================== CORE INTERFACE ====================
 
@@ -458,13 +460,56 @@ public class GUIPanel
         onAirIndicator.setMaximumSize(new Dimension(80, 30));
         onAirIndicator.setMinimumSize(new Dimension(80, 30));
 
-        //--- MIDI Panel indicatori
+        //--- MIDI Panel indicator
+        JLabel midiLabel = new JLabel("CONSOLE");
+        midiLabel.setForeground(labelColor);
+
         midiPanelInfo = new Dseg14Display(appConfig.getSystem().getGuiConstraints().getLcdFontPath());
-        midiPanelInfo.setValue(String.valueOf(midiManager.getMidiBinding(panelId)));
+        ControlCore.ControlPanelId midiBinding = midiManager.getMidiBinding(panelId);
+        midiPanelInfo.setValue(midiBinding != null? midiBinding.toString() : null);
+
+        //============== STATUS PANEL ELEMENTS
+        //--panel LABEL
+        JLabel panelLabel = new JLabel("CAM  " + panelId);
+        panelLabel.setForeground(labelColor);
+        panelLabel.setFont(panelLabel.getFont().deriveFont(panelLabel.getFont().getSize2D() * 1.8f));
+
+        cameraLabel = new JLabel("");
+        cameraLabel.setForeground(labelColor);
+
+        // --- camera status info
+        statusInfo = new JLabel("");
+        statusInfo.setForeground(okColor);
+        statusInfo.setFont(statusInfo.getFont().deriveFont(statusInfo.getFont().getSize2D() * 1.2f));
 
         //==================================
         //             MAIN LAYOUT
         // =================================
+
+        // STATUS INFO PANEL
+        JPanel statusPanel = new JPanel( new GridBagLayout());
+        statusPanel.setBackground(backgroundColor);
+        GridBagConstraints statusGbc = new GridBagConstraints();
+        statusGbc.fill = GridBagConstraints.CENTER;
+        statusGbc.insets = new Insets(3, 5, 0, 30);
+        statusGbc.gridy = 0;
+
+        //------- Panel LABEL ==> STATUS PANEL
+        statusGbc.insets = new Insets(3, 100, 0, 5);
+        statusGbc.gridx = 0;
+        statusGbc.gridheight = 2;
+        statusPanel.add(panelLabel, statusGbc);
+
+        // --------- CAmera desriction ==> STATUS PANEL
+        statusGbc.gridx = 1;
+        statusGbc.gridheight = 1;
+        statusPanel.add(cameraLabel, statusGbc);
+
+        // --------- CAmera STATUS ==> STATUS PANEL
+        statusGbc.gridx = 1;
+        statusGbc.gridy = 1;
+        statusPanel.add(statusInfo, statusGbc);
+
 
         //==== EXPOSURE PANEL
         JPanel exposurePanel = new JPanel(new GridBagLayout());
@@ -694,19 +739,23 @@ public class GUIPanel
         upperPanel.add(focusPanel, upperPanelGBC);
 
         // ======== STATUS PANEL COMPOSITION
-        JPanel statusPanel = new JPanel(new GridBagLayout());
-        statusPanel.setBackground(backgroundColor);
-        GridBagConstraints statusPanelGBC = new GridBagConstraints();
-        statusPanelGBC.fill = GridBagConstraints.NONE;
-        statusPanelGBC.insets = new Insets(0, 6, 0, 6);
+        JPanel infoPanel = new JPanel(new GridBagLayout());
+        infoPanel.setBackground(backgroundColor);
+        GridBagConstraints infoPanelGbc = new GridBagConstraints();
+        infoPanelGbc.fill = GridBagConstraints.NONE;
+        infoPanelGbc.insets = new Insets(0, 6, 0, 6);
 
         // --- MIDI panel indicator ===> STATUS PANEL
-        statusPanelGBC.gridx = 0;
-        statusPanel.add(midiPanelInfo, statusPanelGBC);
+        infoPanelGbc.gridx = 0;
+        infoPanel.add(midiLabel, infoPanelGbc);
+
+        // --- MIDI panel indicator ===> STATUS PANEL
+        infoPanelGbc.gridx = 1;
+        infoPanel.add(midiPanelInfo, infoPanelGbc);
 
         //---  ON AIR indicator ===> STATUS PANEL
-        statusPanelGBC.gridx = 1;
-        statusPanel.add(onAirIndicator, statusPanelGBC);
+        infoPanelGbc.gridx = 2;
+        infoPanel.add(onAirIndicator, infoPanelGbc);
 
 
         //====== CENTRAL PANEL COMPOSITION
@@ -723,7 +772,7 @@ public class GUIPanel
 
         // ------ STATUS PANEL indicator ===> CENTRAL PANEL
         centralPanelGBC.gridy = 1;
-        centralPanel.add(statusPanel, centralPanelGBC);
+        centralPanel.add(infoPanel, centralPanelGBC);
 
         //---- Jog component ==> CENTRAL PANEL
         centralPanelGBC.gridy = 2;
@@ -765,21 +814,26 @@ public class GUIPanel
         mainPanelGBC.insets = new Insets(0, 2, 3, 0);
         mainPanelGBC.gridx = 0;
 
-        //------- UPPER PANEL ===> MAIN PANEL
+        //------ STATUS PANEL ===> MAIN PANEL
         mainPanelGBC.gridy = 0;
+        mainPanelGBC.gridwidth = 3;
+        mainPanel.add(statusPanel, mainPanelGBC);
+
+        //------- UPPER PANEL ===> MAIN PANEL
+        mainPanelGBC.gridy = 1;
         mainPanelGBC.gridwidth = 3;
         mainPanel.add(upperPanel, mainPanelGBC);
 
         //----- SEPARATOR ==> MAIN PANEL
         HorizontalSeparator horizontalSeparator1 = new HorizontalSeparator();
         mainPanelGBC.insets = new Insets(2, 5, 2, 5);
-        mainPanelGBC.gridy = 1;
+        mainPanelGBC.gridy = 2;
         mainPanelGBC.fill = GridBagConstraints.HORIZONTAL;
         mainPanel.add(horizontalSeparator1, mainPanelGBC);
 
         //--------- COntrol panel ===> MAIN PANEL
         mainPanelGBC.insets = new Insets(0, 0, 0, 0);
-        mainPanelGBC.gridy = 2;
+        mainPanelGBC.gridy = 3;
         mainPanel.add(controlPanel, mainPanelGBC);
         add(mainPanel, BorderLayout.CENTER);
 
@@ -1041,9 +1095,35 @@ public class GUIPanel
         }
     }
 
-    //MIDI INDICATOR update
+    //=== MIDI INDICATOR update
     public Dseg14Display getMidiPanelInfo(){
         return this.midiPanelInfo;
+    }
+
+    //=== STATUS INFO UPDATE
+    public void refreshStatusInfo() {
+
+        boolean online = cameraManager.isCameraOnline(panelId);
+
+        if (online) {
+            statusInfo.setText("ONLINE");
+            statusInfo.setForeground(okColor);
+        } else {
+            statusInfo.setText("OFFLINE");
+            statusInfo.setForeground(errorColor);
+        }
+
+        //DEBUG
+        /*System.out.println("Refresh panel " + panelId + " CAM STATUS ONLINE: " + cameraManager.isCameraOnline(panelId)
+                        + " HASH: " + System.identityHashCode(cameraManager.getCamera("CAM_" + panelId.toString())));*/
+
+
+        String description = cameraManager.getCameraDescription(panelId);
+
+        cameraLabel.setText(description != null
+                        ? description
+                        : "-----------");
+
     }
 
 }

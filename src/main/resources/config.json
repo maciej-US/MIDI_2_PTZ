@@ -20,33 +20,12 @@
       "viscaDefinition" : "C:/GIT/BCD2PTZ/BCD2PTZ/src/main/resources/AVER_PTZ310.json",
       "assignedGuiPanel" : "A",
       "assignedMidiPanel" : "A"
-    }, {
-      "cameraId" : "CAM_B",
-      "displayName" : "Kamera B",
-      "ipAddress" : "100.75.75.101",
-      "port" : 52381,
-      "viscaDefinition" : "C:/GIT/BCD2PTZ/BCD2PTZ/src/main/resources/AVER_PTZ310.json",
-      "assignedGuiPanel" : "B",
-      "assignedMidiPanel" : ""
-    }, {
-      "cameraId" : "CAM_C",
-      "displayName" : "Kamera C",
-      "ipAddress" : "100.75.75.102",
-      "port" : 52381,
-      "viscaDefinition" : "C:/GIT/BCD2PTZ/BCD2PTZ/src/main/resources/AVER_PTZ310.json",
-      "assignedGuiPanel" : "C",
-      "assignedMidiPanel" : "B"
-    }, {
-      "cameraId" : "CAM_D",
-      "displayName" : "Kamera D",
-      "ipAddress" : "100.75.75.103",
-      "port" : 52381,
-      "viscaDefinition" : "C:/GIT/BCD2PTZ/BCD2PTZ/src/main/resources/AVER_PTZ310.json",
-      "assignedGuiPanel" : "D",
-      "assignedMidiPanel" : ""
     } ],
     "guiConstraints" : {
       "lcdFontPath" : "C:/GIT/BCD2PTZ/BCD2PTZ/src/main/resources/DSEG14Classic-Regular.ttf"
+    },
+    "transport" : {
+      "socketTimeout" : 150
     }
   },
   "user" : { },

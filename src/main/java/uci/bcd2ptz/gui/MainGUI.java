@@ -3,11 +3,8 @@ package uci.bcd2ptz.gui;
 
 import uci.bcd2ptz.AppConfig;
 import uci.bcd2ptz.AppConfigManager;
-import uci.bcd2ptz.core.ControlCore;
+import uci.bcd2ptz.core.*;
 import uci.bcd2ptz.core.ControlCore.ControlPanelId;
-import uci.bcd2ptz.core.ControlEvent;
-import uci.bcd2ptz.core.ControlEventBus;
-import uci.bcd2ptz.core.ControlEventListener;
 import uci.bcd2ptz.midi.MidiControllerManager;
 import uci.bcd2ptz.ptz.PTZCamera;
 import uci.bcd2ptz.ptz.PTZCameraManager;
@@ -74,7 +71,11 @@ public class MainGUI implements Runnable, ControlEventListener {
         GUIPanel panel = panels.get(event.getPanel());
 
         //DEBUG
-        System.out.println("GUI ROUTE: " + event.getAction() + " -> PANEL " + event.getPanel());
+        //System.out.println("GUI ROUTE: " + event.getAction() + " -> PANEL " + event.getPanel());
+
+        if (panel != null && event.getAction().equalsIgnoreCase("UPDATE_CAMERA_STATUS"))  {
+            refreshStatusInfo(event.getPanel());
+        }
 
         if (panel != null) {
             panel.handleControlEvent(event);
@@ -163,12 +164,12 @@ public class MainGUI implements Runnable, ControlEventListener {
 
     }
 
-    // MIDI PANELS STATUS UPDATES
+    //===  MIDI PANELS STATUS UPDATES
     public void refreshPanelBindings() {
 
         for (GUIPanel panel : panels.values()) {
             //DEBUG
-            System.out.println("MIDI DSPL VALUE" + String.valueOf(midiManager.getMidiBinding(panel.panelId)));
+            //System.out.println("MIDI DSPL VALUE" + String.valueOf(midiManager.getMidiBinding(panel.panelId)));
             ControlPanelId midiBinding = midiManager.getMidiBinding(panel.panelId);
             panel.getMidiPanelInfo().setValue(
                     midiBinding == null ?
@@ -177,6 +178,20 @@ public class MainGUI implements Runnable, ControlEventListener {
         }
     }
 
+    //=== CAMERAS STATUS UPDATE
+    public void refreshStatusInfo() {
+
+        for (GUIPanel panel : panels.values()) {
+            panel.refreshStatusInfo();
+        }
+    }
+
+    public void refreshStatusInfo(ControlPanelId panelId) {
+
+        if (panels.containsKey(panelId)) {
+           panels.get(panelId).refreshStatusInfo();
+        }
+    }
 
     // ========== GETTERS, SETTERS, HELPERS
 
@@ -194,7 +209,8 @@ public class MainGUI implements Runnable, ControlEventListener {
         new SettingsDialog(
                 frame,
                 configManager,
-                cameraManager
+                cameraManager,
+                this
         ).setVisible(true);
     }
 }

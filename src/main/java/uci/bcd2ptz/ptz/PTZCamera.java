@@ -1,6 +1,7 @@
 package uci.bcd2ptz.ptz;
 
 import lombok.Data;
+import uci.bcd2ptz.core.ControlEvent;
 import uci.bcd2ptz.visca.FieldDefinition;
 import uci.bcd2ptz.visca.ViscaConfig;
 import uci.bcd2ptz.visca.ViscaPTZController;
@@ -17,6 +18,8 @@ public class PTZCamera {
 
     private final String cameraId;
 
+    private final String model;
+
     private String ipAddress;
     private int cameraPort;
     private int localPort;
@@ -29,6 +32,7 @@ public class PTZCamera {
     private final Map<String, ParameterState> parameters = new ConcurrentHashMap<>();
     private boolean online;
     private long lastUpdateTime;
+    private String displayName;
 
     /*
      * Sterownik przypisany do tej kamery
@@ -41,6 +45,8 @@ public class PTZCamera {
             String ipAddress,
             int cameraPort,
             int localPort,
+            int socketTimeout,
+            String displayName,
             ViscaConfig config,
             PTZCameraManager cameraManager)
             throws Exception {
@@ -49,6 +55,9 @@ public class PTZCamera {
         //System.out.println("Creating Camera " + cameraId + " Local port: " + localPort);
 
         this.cameraId = cameraId;
+        this.displayName = displayName;
+        this.model = config.getCameraName();
+
 
         this.ipAddress = ipAddress;
         this.localPort = localPort;
@@ -74,9 +83,9 @@ public class PTZCamera {
 
         Map<String, ParameterState> parameters = new HashMap<>();
 
-        this.socket.setSoTimeout(1000);
+        this.socket.setSoTimeout(socketTimeout);
 
-        this.controller = new ViscaPTZController(this, config);
+        this.controller = new ViscaPTZController(this, config, this.socket.getSoTimeout());
 
         //====== CONFIGURATION ==========
         //Positions limits
@@ -133,6 +142,14 @@ public class PTZCamera {
      * =========================================
      */
 
+    public void setPower (boolean powerOn){
+        if (powerOn) {
+            controller.executeViscaCommand("powerOn");
+        }else{
+            controller.executeViscaCommand("powerOff");
+        }
+    }
+
     public void moveAbsolute(double pan, double tilt, int speed) {
         controller.moveAbsolute(pan, tilt,speed);
     }
@@ -171,20 +188,20 @@ public class PTZCamera {
         return controller.syncPosition();
     }
 
-    public boolean powerStatusRequest(){
-        //DEBUG:
-        /*System.out.println("Camera " + this.cameraId + " power status request\n" +
-                "IP " + this.ipAddress + " PORT " + this.cameraPort + " || LOCAL IP" + socket.getLocalAddress() + " PORT " + socket.getLocalPort());*/
-        controller.parameterInquiry("powerStatus");
-        //DEBUG
+    public int powerStatusRequest() {
 
-        //System.out.println("Camera " + this.cameraId  + " power status " + this.parameters.get("powerStatus"));
-        if (this. parameters.get("powerStatus") == null ||
-                this. parameters.get("powerStatus").getCurrentState() == null){
-            return false;
-        }else {
-            return this.parameters.get("powerStatus").getCurrentState().equalsIgnoreCase("ON");
+        boolean communicationOk =  controller.powerStatusRequest();
+
+        if (!communicationOk) {
+            return -1;
         }
+
+        ParameterState state = parameters.get("powerStatus");
+        if (state == null || state.getCurrentState() == null) {
+            return -1;
+        }
+
+        return (int)state.getCurrent();
     }
 
     public void setWhiteBalanceMode(String mode){
@@ -301,6 +318,14 @@ public class PTZCamera {
      *     GETTERS, SETTERS, HELPERS
      * ========================================= */
 
+    public void markOnline(){
+        this.online = true;
+    }
+
+    public void markOffline(){
+        this.online = false;
+    }
+
     public ParameterState getParameter(String parameterName) {
 
         ParameterState parameter = this.parameters.get(parameterName);
@@ -336,6 +361,10 @@ public class PTZCamera {
         //System.out.println(parameterName + "Parameter request send");
         controller.parameterInquiry(parameterName);
         return this.parameters.get(parameterName);
+    }
+
+    public String getDescription(){
+        return this.displayName;
     }
 
     public double clampPan( double value){

@@ -42,7 +42,7 @@ public class Main {
          // ================= CAMERAS =================
 
         //TODO: Automatyka pobierania adresu IP
-        PTZCameraManager cameraManager = new PTZCameraManager("100.75.75.78", 52381);
+        PTZCameraManager cameraManager = new PTZCameraManager("100.75.75.78", 52381, eventBus);
 
         for (AppConfig.CameraConfig camera : appConfig.getSystem().getCameras()) {
 
@@ -76,7 +76,7 @@ public class Main {
             }
 
             //DEBUG:
-            System.out.println("ASSIGNED MIDI [Main] " + cameraConfig.getCameraId() + " --> " + assignedMidiPanel);
+            //System.out.println("ASSIGNED MIDI [Main] " + cameraConfig.getCameraId() + " --> " + assignedMidiPanel);
 
             PTZCamera camera =
                     cameraManager.addCamera(
@@ -84,6 +84,8 @@ public class Main {
                             cameraConfig.getIpAddress(),
                             cameraConfig.getPort(),
                             cameraConfig.getPort(),
+                            (int)appConfig.getSystem().getTransport().get("socketTimeout"),
+                            cameraConfig.getDisplayName(),
                             viscaConfig,
                             assignedGuiPanel,
                             assignedMidiPanel
@@ -207,7 +209,7 @@ public class Main {
 
         MainGUI gui = new MainGUI(eventBus, configManager, midiManager);
         gui.setCameraManager(cameraManager);
-        //configManager.addConfigurationListener(gui);
+
         new Thread(gui).start();
         core.setGUI(gui);
         //--synchronizacja stanów
@@ -215,6 +217,7 @@ public class Main {
             Thread.sleep(50);
         }
         core.syncInterface();
+        gui.refreshStatusInfo();
 
         // ================= WARN =================
 

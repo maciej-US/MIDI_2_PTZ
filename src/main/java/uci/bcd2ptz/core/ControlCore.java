@@ -193,10 +193,12 @@ public class ControlCore {
             return;
         }
 
+
+
         ControlPanel targetPanel = panels.get(resolveControlPanel(event));
 
         // DEBUG
-       /* System.out.println("=========== CORE ========= \nhandleControlEvent: SOURCE" + event.getEventSource() + "   Source panel: " + event.getPanel() + " destination panel: " + targetPanel.getId() + "\n" +
+        /*System.out.println("=========== CORE ========= \nhandleControlEvent: SOURCE" + event.getEventSource() + "   Source panel: " + event.getPanel() + " destination panel: " + targetPanel.getId() + "\n" +
                 " action: " + event.getAction() + " value: " + event.getValue());
         System.out.println("Panel: " + targetPanel.getId());*/
 
@@ -206,8 +208,6 @@ public class ControlCore {
             return;
         }
 
-        PTZCamera camera = cameraManager.getCoreAssignedCamera(targetPanel.getId());
-
         ControlEvent coreEvent = new ControlEvent(
                 SYSTEM,
                 targetPanel.getId(),
@@ -215,8 +215,24 @@ public class ControlCore {
                 event.getValue()
         );
 
+        PTZCamera camera = cameraManager.getCoreAssignedCamera(targetPanel.getId());
+
+        //ONLINE?OFFLINE STATUS UPDATE EVENT
+        if (event.getAction().equalsIgnoreCase("UPDATE_CAMERA_STATUS")){
+            sendControlEvent(event);
+            return;
+        }
+
+        if (!camera.isOnline()){
+            if (coreEvent.getAction().equalsIgnoreCase("POWER_STATUS_REQUEST")){
+                camera.powerStatusRequest();
+            }else{
+                return;
+            }
+        }
+
         int value = coreEvent.getValue();
-        String action =coreEvent.getAction();
+        String action = coreEvent.getAction();
 
         /* Synchronizacja po wyjściu z ABS */
 
@@ -351,6 +367,8 @@ public class ControlCore {
 //                "handle PAN " + controlId + " -> Received value: " + value);
 
         PTZCamera camera =  cameraManager.getCoreAssignedCamera(event.getPanel());
+        //Debug
+        //System.out.println("HANDLE PAN RESOLEVED CAM: " + event.getPanel());
 
         if (camera == null) {return;}
 
@@ -527,9 +545,9 @@ public class ControlCore {
         int value = event.getValue();
 
         //DEbug:
-        System.out.println("Handle focus mode event ==> " + event.toString()
+       /* System.out.println("Handle focus mode event ==> " + event.toString()
         + "\n control value:  " + control.toString());
-
+*/
         if (control != FOCUS_MODE || value == 0){
             return;
         }
@@ -789,7 +807,7 @@ public class ControlCore {
         }
 
         //DEBUG
-        System.out.println("PTZ Handler CONTROL: " + control);
+        //System.out.println("PTZ Handler CONTROL: " + control);
 
         // ======= TILT MODE ==========
         if (control != PTZ_MODE) {
@@ -842,7 +860,7 @@ public class ControlCore {
     private void enterWaitNeutral(ControlPanel panel, Control control) {
 
         //DEBUG
-        System.out.println("WAIT FOR NEUTRAL CONTROL: " + control);
+        //System.out.println("WAIT FOR NEUTRAL CONTROL: " + control);
         panel.getStates().put(PTZ_MODE, ModeState.WAIT_NEUTRAL);
         panel.getStates().put(TILT, ModeState.WAIT_NEUTRAL);
         //panel.getStates().put(ZOOM, ModeState.WAIT_NEUTRAL);
@@ -1716,6 +1734,14 @@ public class ControlCore {
 
     private void sendControlEvent(ControlEvent event) {
 
+        //DEBUG
+        /*System.out.println(
+                "SEND EVENT\n" +
+                        "CORE PANEL = " + event.getPanel() +
+                        "\nMIDI PANEL = " + midiManager.getMidiBinding(event.getPanel()) +
+                        "\nACTION = " + event.getAction()
+        );*/
+
         ControlPanelId midiPanel =
                 midiManager.getMidiBinding(event.getPanel());
 
@@ -1733,7 +1759,9 @@ public class ControlCore {
 
             midiController.sendControlEvent(midiEvent);
         }
-        gui.handleControlEvent(event);
+        if (gui != null) {
+            gui.handleControlEvent(event);
+        }
     }
 
     private ControlPanel createPanel(ControlPanelId panelId) {
@@ -1755,12 +1783,10 @@ public class ControlCore {
 
         switch (event.getEventSource()) {
 
-            case MIDI: {
-                String guiPanel = cameraManager.CorePanelBinding(event.getPanel());
-                return guiPanel == null
-                        ? null
-                        : ControlPanelId.valueOf(guiPanel);
-            }
+            case MIDI:
+                return midiManager.getCoreBinding(
+                        event.getPanel()
+                );
 
             case GUI:
             case SYSTEM:
@@ -1770,4 +1796,5 @@ public class ControlCore {
                 return null;
         }
     }
+
 }

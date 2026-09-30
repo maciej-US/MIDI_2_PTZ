@@ -19,6 +19,7 @@ public class ViscaPTZController {
 
     private final ViscaCommandBuilder commandBuilder;
     private static final Logger LOGGER = Logger.getLogger(ViscaPTZController.class.getName());
+    private final long RESPONSE_TIMEOUT;
 
     //Camera <=> controller connection>
     private final PTZCamera camera;
@@ -37,11 +38,12 @@ public class ViscaPTZController {
      * @param config plik konfiguracyjny VISCA (JSON)
      */
 
-    public ViscaPTZController(PTZCamera camera, ViscaConfig config) {
+    public ViscaPTZController(PTZCamera camera, ViscaConfig config, long responseTimeout) {
         //podłączenie kamery i CommandBuildera
         this.commandBuilder = new ViscaCommandBuilder(config);
         this.camera = camera;
         this.cameraManager = camera.getCameraManager();
+        this.RESPONSE_TIMEOUT = responseTimeout;
 
         //Wczytanie formatek pakietów UDP i typó komuynikatów VISCA
         Map<String, Object> transport = commandBuilder.getConfig().getTransport();
@@ -257,32 +259,34 @@ public class ViscaPTZController {
      */
     public PendingPacket sendViscaCommand(byte[] viscaPayload, String type) {
 
-
-        //DEBUG:
-        //System.out.println("VISCA TX [" +Thread.currentThread().getName() + "] : " + bytesToHex(viscaPayload,viscaPayload.length));
         try {
-            byte[] command =wrapViscaPayload(viscaPayload,type);
+            byte[] command = wrapViscaPayload(viscaPayload, type);
 
-            //DEBUG:
-            //System.out.println("======= Send VISCA command ============\nUDP TX: " + bytesToHex(command,command.length));
+            PendingPacket pending = cameraManager.sendPacket(camera, command);
 
-            DatagramPacket dp =
-                    new DatagramPacket(
-                            command,
-                            command.length,
-                            InetAddress.getByName(
-                                 camera.getIpAddress()
-                            ),
-                            camera.getCameraPort()
-                    );
+            if (pending == null) {
+                camera.markOffline();
+                cameraManager.notifyCameraStatusChanged(camera, false);
+                LOGGER.warning("No PendingPacket for camera " + camera.getCameraId());
+                return null;
+            }
 
-            //camera.getSocket().send(dp);
-            return cameraManager.sendPacket(camera, command);
+            if ("command".equalsIgnoreCase(type)){
+                updateCameraStatus(pending);
+            }
 
-        } catch (Exception e) {
+            return pending;
 
-            LOGGER.log(Level.SEVERE,"Błąd wysyłania komendy VISCA", e);
+        } catch (InterruptedException e) {
+            camera.markOffline();
+            cameraManager.notifyCameraStatusChanged(camera, false);
+            Thread.currentThread().interrupt();
+            LOGGER.log(Level.SEVERE, "Camera " + camera.getCameraId() + " communication error", e);
+        } catch (Exception e){
+            cameraManager.notifyCameraStatusChanged(camera, false);
+            LOGGER.log(Level.SEVERE, "Camera " + camera.getCameraId() + " sending VISCA command error", e);
         }
+
         return null;
     }
 
@@ -297,6 +301,8 @@ public class ViscaPTZController {
 
             if (response == null || response.length < 10){
                 LOGGER.log(Level.WARNING, "No valid PAN/TILT inquiry response received");
+                camera.markOffline();
+                cameraManager.notifyCameraStatusChanged(camera, false);
                 return false;
             }
 
@@ -431,6 +437,10 @@ public class ViscaPTZController {
         if (response == null || response.length < 4) {
             LOGGER.warning("Invalid " + parameterName + " inquiry response." +
             "\nReceived response:" + ((response ==null) ? "null" : bytesToHex(response, response.length)));
+            //DEBUG:
+            System.out.println("CAMERA " + camera.getCameraId() + " SET OFFLINE.");
+            camera.markOffline();
+            cameraManager.notifyCameraStatusChanged(camera, false);
             return false;
         }
 
@@ -627,6 +637,10 @@ public class ViscaPTZController {
             state.setMin(((Number) field.getMapping().get("mappedMin")).doubleValue());
             state.setMax(((Number) field.getMapping().get("mappedMax")).doubleValue());
         }
+        //camera.markOnline();
+        //cameraManager.notifyCameraStatusChanged(camera, true);
+        //DEBUG:
+        //System.out.println("CAMERA " + camera.getCameraId() + " SET ONLINE.");
         return true;
     }
 
@@ -634,60 +648,80 @@ public class ViscaPTZController {
     public boolean powerStatusRequest() {
 
         try {
-
             CommandDefinition inquiry = commandBuilder.getCommand("powerStatusRequest");
 
-            //DEBUG
-            //System.out.println("INquiry data\n" + inquiry.toString());
-
-            if(inquiry ==null || inquiry.getResponseTemplate() ==null){
-                LOGGER.log(Level.WARNING, "Missing response template for powerStatusRequest");
+            if (inquiry == null || inquiry.getResponseTemplate() == null) {
+                LOGGER.warning("Missing response template for powerStatusRequest");
                 return false;
             }
 
             byte[] response = executeViscaInquiry("powerStatusRequest");
 
             if (response == null) {
-                LOGGER.log(Level.WARNING, "No power state response");
+                LOGGER.warning("No power state response");
                 return false;
             }
 
             List<String> responseTemplate = inquiry.getResponseTemplate();
-            if (responseTemplate == null || responseTemplate.isEmpty()){
-                LOGGER.warning("Invalid powerStatus response definition.");
-                return false;
-            }
 
             int offset = 0;
-            for (String token : responseTemplate){
-                if(!token.startsWith("{") && !token.endsWith("}")){
+
+            for (String token : responseTemplate) {
+                if (!token.startsWith("{") || !token.endsWith("}")) {
                     offset++;
                     continue;
                 }
 
-                FieldDefinition field = getFieldDefinition(token.substring(1, token.length() -1));
-                if ("enum".equalsIgnoreCase(inquiry.getResponseType())){
-                    String key = String.format("%02X", response[offset] & 0xFF);
-                    Object mappedValue = field.getMapping().get(key);
-                    if (mappedValue == null){
-                        LOGGER.warning("Unknown enum value: " + key);
-                        return false;
-                    }
-                    if ("ON".equalsIgnoreCase(mappedValue.toString())){
-                        return true;
-                    } else {
-                        return false;
-                    }
+                FieldDefinition field = getFieldDefinition(token.substring(1, token.length() - 1));
+                String key = String.format("%02X", response[offset] & 0xFF);
+
+                Map<String, Object> values = (Map<String, Object>) field.getMapping().get("values");
+
+                Object mappedValue = values.get(key);
+
+                if (mappedValue == null) {
+                    LOGGER.warning("Unknown power status value: " + key);
+                    return false;
                 }
+
+                String powerState = mappedValue.toString();
+
+                ParameterState state = camera.getParameters().get("powerStatus");
+
+                if (state == null) {
+                    state = new ParameterState();
+                    camera.getParameters().put("powerStatus", state);
+                }
+
+                if ("ON".equalsIgnoreCase(powerState)) {
+                    state.setCurrentState("ON");
+                    state.setCurrent(1);
+                } else {
+                    state.setCurrentState("OFF");
+                    state.setCurrent(0);
+                }
+                return true;
             }
 
-            System.out.println("NO VALID POWER STATUS RESPONSE");
+            LOGGER.warning("No valid power status response");
             return false;
 
         } catch (Exception e) {
-            System.out.println("POWER STATUS TEST FAILED");
-            e.printStackTrace();
+            LOGGER.log(Level.WARNING,"Power status inquiry failed", e);
             return false;
+        }
+    }
+
+    private void updateCameraStatus(PendingPacket pending) throws InterruptedException {
+
+        if (pending.waitForResponse(RESPONSE_TIMEOUT)) {
+            camera.markOnline();
+            //cameraManager.notifyCameraStatusChanged(camera, true);
+        } else {
+            camera.markOffline();
+            cameraManager.notifyCameraStatusChanged(camera, false);
+            LOGGER.warning("Camera " + camera.getCameraId()+ " does not respond."
+            );
         }
     }
 

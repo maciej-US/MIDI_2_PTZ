@@ -1,6 +1,6 @@
 {
 
-  "cameraName": "AVER_PTZ310",
+  "cameraName": "AVER PTC310U",
 
   "transport": {
 
@@ -32,6 +32,32 @@
   },
 
   "commands": {
+    "powerOn": {
+      "type": "command",
+      "description": "Camera Power ON",
+      "commandTemplate": [
+        "81",
+        "01",
+        "04",
+        "00",
+        "02",
+        "FF"
+      ]
+    },
+
+    "powerOff": {
+      "type": "command",
+      "description": "Camera Power ON",
+      "commandTemplate": [
+        "81",
+        "01",
+        "04",
+        "00",
+        "03",
+        "FF"
+      ]
+    },
+
     "absolutePosition": {
       "type": "command",
       "description": "Pan/Tilt Drive Absolute Position",
@@ -492,7 +518,7 @@
       ]
     },
 
-    "powerStatus": {
+    "powerStatusRequest": {
       "type": "inquiry",
       "description": "Power status inquiry",
       "commandTemplate": [

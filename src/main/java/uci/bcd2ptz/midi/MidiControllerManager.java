@@ -147,7 +147,7 @@ public class MidiControllerManager implements AppConfigManager.ConfigurationList
                 }
 
                 //DEBUG
-                System.out.println("MIDI panel: " + midiPanel + "   CORE panel: " + corePanel);
+                //System.out.println("MIDI panel: " + midiPanel + "   CORE panel: " + corePanel);
 
                 assignMidiPanel(ControlCore.ControlPanelId.valueOf(midiPanel),
                                 ControlCore.ControlPanelId.valueOf(corePanel));
@@ -195,6 +195,9 @@ public class MidiControllerManager implements AppConfigManager.ConfigurationList
     }
 
     public void assignMidiPanel(ControlCore.ControlPanelId midiPanel, ControlCore.ControlPanelId corePanel) {
+
+        //DEBUG
+        //System.out.println("REassigning panels MIDI " + midiPanel + " to " + corePanel );
 
         ControlCore.ControlPanelId oldCore = midiToCoreBindings.get(midiPanel);
 

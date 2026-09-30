@@ -356,7 +356,12 @@ public class MidiController implements AppConfigManager.ConfigurationListener {
     public void sendControlEvent(ControlEvent event) {
 
         //DEBUG
-        //System.out.println("==== SEND CONTROL EVENT ======= \n --> " + event.toString());
+        /*System.out.println(
+                "SEND EVENT\n" +
+                        "CORE PANEL = " + event.getPanel() +
+                        "\nMIDI PANEL = " + controllerManager.getMidiBinding(event.getPanel()) +
+                        "\nACTION = " + event.getAction()
+        );*/
 
         if ("STATUS_REQUEST".equals(event.getAction())) {
 

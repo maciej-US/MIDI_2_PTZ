@@ -20,6 +20,8 @@ public class PendingPacket {
 
     private final long timestamp;
 
+    private volatile boolean responseReceived = false;
+
     public PendingPacket(
             byte[] payload,
             String targetIp,
@@ -34,6 +36,24 @@ public class PendingPacket {
 
     public long getAge() {
         return System.currentTimeMillis() - timestamp;
+    }
+
+    public void markResponseReceived() {
+        responseReceived = true;
+    }
+
+    public boolean waitForResponse(long timeoutMs)
+            throws InterruptedException {
+
+        long deadline = System.currentTimeMillis() + timeoutMs;
+
+        while (System.currentTimeMillis() < deadline) {
+            if (responseReceived) {
+                return true;
+            }
+            Thread.sleep(5);
+        }
+        return false;
     }
 
     @Override
