@@ -25,14 +25,7 @@ public class MainGUI implements Runnable, ControlEventListener {
     // ==================== GUI ELEMENTS ====================
 
     private JFrame frame;
-    /*private JComboBox<String> midiComboBox;
-    private JButton connectButton;*/
-
-    //Camera PANELS
-    private GUIPanel panelA;
-    private GUIPanel panelB;
-    private GUIPanel panelC;
-    private GUIPanel panelD;
+    private JPanel contentPanel;
 
     // ==================== CORE INTERFACE ====================
 
@@ -123,9 +116,9 @@ public class MainGUI implements Runnable, ControlEventListener {
 
         //=================== CAMERA PANELS ==============
 
-        JPanel content = new JPanel();
-        content.setLayout(
-                new BoxLayout(content, BoxLayout.X_AXIS)
+        contentPanel = new JPanel();
+
+        contentPanel.setLayout(new BoxLayout(contentPanel,BoxLayout.X_AXIS)
         );
 
         boolean first = true;
@@ -138,18 +131,10 @@ public class MainGUI implements Runnable, ControlEventListener {
                 continue;
             }
 
-            if (!first) {
-                content.add(new VerticalSeparator());
-            }
-
-            GUIPanel panel = new GUIPanel(panelId, outputBus, cameraManager, midiManager, appConfig);
-            panels.put(panelId, panel);
-            content.add(panel);
-
-            first = false;
+            rebuildPanels();
         }
 
-        frame.add(content, BorderLayout.CENTER);
+        frame.add(contentPanel, BorderLayout.CENTER);
 
         //frame.setSize(2 * this.panelA.getWidth() + 24, panelA.getHeight() + 15);
         frame.pack();
@@ -162,6 +147,54 @@ public class MainGUI implements Runnable, ControlEventListener {
 
         initialized = true;
 
+    }
+
+    private GUIPanel createPanel(
+            ControlPanelId panelId) {
+
+        GUIPanel panel =
+                new GUIPanel(
+                        panelId,
+                        outputBus,
+                        cameraManager,
+                        midiManager,
+                        appConfig
+                );
+
+        panels.put(panelId, panel);
+
+        return panel;
+    }
+
+    public void rebuildPanels() {
+
+        contentPanel.removeAll();
+
+        panels.clear();
+
+        boolean first = true;
+
+        for (ControlPanelId panelId
+                : ControlPanelId.values()) {
+
+            PTZCamera camera = cameraManager.getCoreAssignedCamera(panelId);
+
+            if (camera == null) {
+                continue;
+            }
+
+            if (!first) {contentPanel.add(new VerticalSeparator());
+            }
+
+            contentPanel.add(createPanel(panelId));
+            first = false;
+        }
+
+        contentPanel.revalidate();
+        contentPanel.repaint();
+
+        frame.pack();
+        refreshStatusInfo();
     }
 
     //===  MIDI PANELS STATUS UPDATES
@@ -210,6 +243,7 @@ public class MainGUI implements Runnable, ControlEventListener {
                 frame,
                 configManager,
                 cameraManager,
+                midiManager,
                 this
         ).setVisible(true);
     }

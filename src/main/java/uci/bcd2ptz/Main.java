@@ -15,6 +15,9 @@ import javax.sound.midi.MidiDevice;
 import javax.sound.midi.MidiSystem;
 import javax.swing.*;
 import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 import static uci.bcd2ptz.core.ControlEvent.EventSource.GUI;
 
@@ -27,9 +30,17 @@ public class Main {
 
         //TODO: Splash SCREEN
 
+        // ======= GENRAL CONFIG =============
+
+         Path configDir = Paths.get("config");
+
+         if (!Files.exists(configDir)) {
+             Files.createDirectories(configDir);
+         }
+
         //======== CONFIG LOADER ==============
 
-        AppConfigManager configManager = new AppConfigManager("src/main/resources/config.json");
+        AppConfigManager configManager = new AppConfigManager("config/config.json");
 
         AppConfig appConfig = configManager.loadOrCreateDefault();
         ControlCore.RunMode mode = ControlCore.RunMode.FULL;
@@ -123,76 +134,6 @@ public class Main {
          if(!midiManager.isMidiControllerRunning()){
              mode = ControlCore.RunMode.NO_HARDWARE;
          }
-
-
-        /*boolean midiAvailable = isMidiDeviceAvailable(appConfig.getSystem().getMidi().getInput().getDeviceName());
-
-        String startupWarning = null;
-
-        if (!midiAvailable) {
-
-            mode = ControlCore.RunMode.NO_HARDWARE;
-
-            startupWarning =
-                    "Nie znaleziono konsolety MIDI:\n\n"
-                            + appConfig.getSystem().getMidi().getInput().getDeviceName()
-                            + "\n\n"
-                            + "System uruchomiony w trybie NO HARDWARE.";
-        }
-
-        MidiController midiController = null;
-
-        //DEBUG:
-        //System.out.println("MAIN MODE: " + mode.toString());
-
-        if (mode != ControlCore.RunMode.NO_HARDWARE) {
-
-            AppConfig.MidiEndpoint midiInput =
-                    appConfig.getSystem()
-                            .getMidi()
-                            .getInput();
-
-            AppConfig.MidiEndpoint midiOutput =
-                    appConfig.getSystem()
-                            .getMidi()
-                            .getOutput();
-
-            ObjectMapper midiMapper = new ObjectMapper();
-
-            MidiConfig midiConfig =
-                    midiMapper.readValue(
-                            new File(
-                                    midiInput.getConfigFile()
-                            ),
-                            MidiConfig.class
-                    );
-
-            try {
-                midiController =
-                        new MidiController(
-                                midiConfig,
-                                midiOutput.getDeviceIndex(),
-                                midiInput.getDeviceIndex(),
-                                eventBus,
-                                mode,
-                                cameraManager
-                        );
-
-                configManager.addConfigurationListener(midiController);
-                midiController.start();
-                System.out.println(
-                        "[MIDI] Loaded config: "
-                                + midiConfig.getControllerName()
-                );
-
-            } catch (Exception e) {
-
-                mode = ControlCore.RunMode.NO_HARDWARE;
-                e.printStackTrace();
-
-                midiController = null;
-            }
-        }*/
 
         // ================= CORE =================
 

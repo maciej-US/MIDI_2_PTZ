@@ -35,7 +35,7 @@ public class MidiInputController
             //DEBUG:
             //System.out.println("MIDI IN ready: " + devices[deviceIndex].getName());
 
-        } catch (Exception e) {
+        }catch (Exception e) {
 
             e.printStackTrace();
         }

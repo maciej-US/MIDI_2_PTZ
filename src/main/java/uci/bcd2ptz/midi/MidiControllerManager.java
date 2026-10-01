@@ -176,6 +176,20 @@ public class MidiControllerManager implements AppConfigManager.ConfigurationList
     public void configurationChanged(AppConfig config) {
         System.out.println("[MIDI] Configuration changed.");
         reloadController();
+        updateMidiIndicators();
+    }
+
+    public void updateMidiIndicators() {
+
+        for (ControlCore.ControlPanelId corePanel : ControlCore.ControlPanelId.values()) {
+            ControlCore.ControlPanelId midiPanel = getMidiBinding(corePanel);
+
+            if (midiPanel != null) {
+                //DEBUG
+                System.out.println("CORE " + corePanel + " -> MIDI " + midiPanel);
+                controller.updateCameraIndicators(midiPanel);
+            }
+        }
     }
 
     //============================

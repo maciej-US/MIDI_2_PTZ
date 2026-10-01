@@ -4,6 +4,7 @@ import uci.bcd2ptz.core.ControlCore.*;
 import uci.bcd2ptz.core.ControlEvent;
 import uci.bcd2ptz.core.ControlEventBus;
 import uci.bcd2ptz.visca.ViscaConfig;
+import uci.bcd2ptz.visca.ViscaPTZController;
 
 import java.io.IOException;
 import java.net.DatagramPacket;
@@ -28,6 +29,8 @@ public class PTZCameraManager {
     private final Map <String, PendingPacket> pendingPackets = new ConcurrentHashMap<>();
     private Thread receiverThread;
     private DatagramSocket socket = null;
+    private String localIP;
+    private int localPort;
 
     private static final Logger LOGGER = Logger.getLogger(PTZCameraManager.class.getName());
     private ControlEventBus inputBus;
@@ -35,6 +38,8 @@ public class PTZCameraManager {
     public PTZCameraManager(String localIP, int localPort, ControlEventBus eventBus)  {
 
         this.inputBus = eventBus;
+        this.localIP = localIP;
+        this.localPort = localPort;
 
         try {
             this.socket = new DatagramSocket(null);
@@ -132,6 +137,7 @@ public class PTZCameraManager {
 
         camera.setIpAddress(ipAddress);
         camera.setCameraPort(cameraPort);
+        camera.markOnline();
 
         cameras.put(cameraId, camera);
         guiPanelAssignments.put(assignedCorePanel, camera);
@@ -151,39 +157,15 @@ public class PTZCameraManager {
         guiPanelAssignments.put(panel, camera);
     }
 
-   /* public void assignMidiPanel(ControlPanelId panel, PTZCamera camera) {
+    public void removeCamera(String cameraId) {
 
-        if (panel == null || camera == null) {
+        PTZCamera camera = cameras.remove(cameraId);
+
+        if (camera == null) {
             return;
         }
-
-        //DEBUG
-        System.out.println("MIDI ASSIGNMENT: " + panel + " -> " + camera.getCameraId());
-
-        // Existing binding control
-        ControlPanelId currentPanel = null;
-
-        for (Map.Entry<ControlPanelId, PTZCamera> entry : midiPanelAssignments.entrySet()) {
-            if (camera.equals(entry.getValue())) {
-                currentPanel = entry.getKey();
-                break;
-            }
-        }
-
-        // Rebinding
-        if (currentPanel != null && currentPanel != panel) {
-            midiPanelAssignments.remove(currentPanel);
-        }
-
-        //Target binding
-        midiPanelAssignments.put(panel,camera);
-
-        //DEBUG
-        System.out.println("CURRENT MIDI BINDINGS: \n" + midiPanelAssignments.toString());
-    }*/
-
-    public void removeCamera(String cameraId) {
-        cameras.remove(cameraId);
+        guiPanelAssignments.values().removeIf(c -> c == camera);
+        midiPanelAssignments.values().removeIf(c -> c == camera);
     }
 
     public PTZCamera getCoreAssignedCamera(ControlPanelId panel) {
@@ -215,9 +197,17 @@ public class PTZCameraManager {
         return camera.isOnline();
     }
 
-    public boolean testConnection(ControlPanelId panelId, String ip,int port,String configPath){
-        //SCAFF
-        System.out.println("TESTING CONNECTION for IP " + ip + ":" + port + "\nCONFIG FILE: " + configPath);
+    public boolean testConnection(String ip,int port,String configPath){
+
+        LOGGER.info("TESTING CONNECTION for IP " + ip + ":" + port + "\nCONFIG FILE: " + configPath);
+
+        try{
+            return ViscaPTZController.testConnection(this, ip, port, configPath);
+
+        }catch (Exception e){
+            LOGGER.warning("TESTING CONNECTION for IP " + ip + ":" + port + "\nCONFIG FILE: " + configPath + "FAILED. \n" + e.getMessage());
+        }
+
 
         return true;
     }
@@ -329,6 +319,14 @@ public class PTZCameraManager {
             LOGGER.warning("Refresh connection failed for " + camera.getCameraId());
             return false;
         }
+    }
+
+    public int getLocalPort(){
+        return this.localPort;
+    }
+
+    public String getLocalIp(){
+        return this.localIP;
     }
 
 }

@@ -1,10 +1,12 @@
 package uci.bcd2ptz.visca;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import uci.bcd2ptz.ptz.PTZCamera;
 import uci.bcd2ptz.ptz.PTZCameraManager;
 import uci.bcd2ptz.ptz.ParameterState;
 import uci.bcd2ptz.ptz.PendingPacket;
 
+import java.io.File;
 import java.net.*;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
@@ -725,6 +727,26 @@ public class ViscaPTZController {
         }
     }
 
+    public static boolean testConnection(PTZCameraManager cameraManager, String ipAddress, int port, String configPath) {
+
+        try {
+
+            ObjectMapper mapper = new ObjectMapper();
+            ViscaConfig config = mapper.readValue(new File(configPath), ViscaConfig.class);
+
+            PTZCamera testCamera = new PTZCamera("TEST_CAMERA", ipAddress, port,0,1000
+                    ,"TEST_CAMERA", config, cameraManager);
+
+            ViscaPTZController controller = new ViscaPTZController(testCamera, config, 1000);
+
+            return controller.powerStatusRequest();
+
+        } catch (Exception e) {
+            LOGGER.warning("Connection test failed for " + ipAddress + ":" + port + " : " + e.getMessage());
+            return false;
+        }
+    }
+
     /* ====================================================
                     CAMERA MOVEMENT HANDLERS
         =================================================== */
@@ -963,4 +985,3 @@ public class ViscaPTZController {
 
 
 }
-

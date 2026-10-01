@@ -3,7 +3,6 @@ package uci.bcd2ptz.ptz;
 import lombok.Data;
 
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
 
 @Data

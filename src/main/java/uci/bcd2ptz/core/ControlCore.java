@@ -561,7 +561,7 @@ public class ControlCore {
 
         ParameterState param = camera.getParameter("focusPosition");
 
-        System.out.println("Current focus mode: " + param.getCurrent());
+        //System.out.println("Previous focus mode: " + param.getCurrentState());
 
         if (param == null){
             param = new ParameterState();

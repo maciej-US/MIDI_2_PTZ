@@ -13,6 +13,22 @@
       }
     },
     "cameras" : [ {
+      "cameraId" : "CAM_C",
+      "displayName" : "Dummy 2",
+      "ipAddress" : "100.75.75.102",
+      "port" : 52381,
+      "viscaDefinition" : "C:\\GIT\\BCD2PTZ\\BCD2PTZ\\AVER_PTZ310.json",
+      "assignedGuiPanel" : "C",
+      "assignedMidiPanel" : null
+    }, {
+      "cameraId" : "CAM_B",
+      "displayName" : "Dummy 1",
+      "ipAddress" : "100.75.75.101",
+      "port" : 52381,
+      "viscaDefinition" : "C:\\GIT\\BCD2PTZ\\BCD2PTZ\\AVER_PTZ310.json",
+      "assignedGuiPanel" : "B",
+      "assignedMidiPanel" : "B"
+    }, {
       "cameraId" : "CAM_A",
       "displayName" : "Kamera A",
       "ipAddress" : "100.75.75.100",

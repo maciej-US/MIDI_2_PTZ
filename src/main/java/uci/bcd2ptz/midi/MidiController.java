@@ -30,6 +30,9 @@ public class MidiController implements AppConfigManager.ConfigurationListener {
 
     private volatile boolean running = false;
     private volatile boolean captureMode = false;
+    private Thread inputThread;
+    private Thread controllerThread;
+    private Thread jogWatchdogThread;
 
     private final BlockingQueue<ControlEvent> controlQueue = new LinkedBlockingQueue<>();
     private final BlockingQueue<MidiEvent> statusQueue = new LinkedBlockingQueue<>();
@@ -42,7 +45,7 @@ public class MidiController implements AppConfigManager.ConfigurationListener {
     //Jog params
     private volatile long lastJogEventTime = 0;
     private volatile int lastJogValue = 64;
-    private static volatile ControlEvent lastJogEvent;
+    private volatile ControlEvent lastJogEvent;
     private static final long JOG_TIMEOUT_MS = 50;
     private final Set<Integer> jogCCNumbers = new HashSet<>();
 
@@ -89,7 +92,7 @@ public class MidiController implements AppConfigManager.ConfigurationListener {
         /*
          * Uruchomienie kontrolera wejścia MIDI
          */
-        Thread inputThread = new Thread(midiInputController, "MIDI-INPUT" );
+        inputThread = new Thread(midiInputController, "MIDI-INPUT" );
 
         for (MidiControlDefinition control : config.getControls().values()) {
 
@@ -107,9 +110,8 @@ public class MidiController implements AppConfigManager.ConfigurationListener {
          * Translacja MIDI -> ControlEvent
          */
 
-        Thread controllerThread =
-                new Thread(() -> {
-                    while (true) {
+        controllerThread = new Thread(() -> {
+                    while (running) {
                         try {
                             MidiEvent event = midiInputController.getEventQueue().take();
                             //DEBUG
@@ -145,7 +147,6 @@ public class MidiController implements AppConfigManager.ConfigurationListener {
                             }
 
                         } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
                             break;
                         } catch (Exception e) {
                             e.printStackTrace();
@@ -156,53 +157,90 @@ public class MidiController implements AppConfigManager.ConfigurationListener {
         controllerThread.setDaemon(true);
         controllerThread.start();
 
-        Thread jogWatchdog =
-                new Thread(() -> {
-                    while (true) {
-                        try {
-                            Thread.sleep(20);
+        jogWatchdogThread =new Thread(() -> {
+            while (running) {
+                try {
+                    Thread.sleep(20);
 
-                            if (captureMode) {
-                                continue;
-                            }
-
-                            if (lastJogEvent == null) {
-                                continue;
-                            }
-
-                            long now = System.currentTimeMillis();
-
-                            if (now - lastJogEventTime < JOG_TIMEOUT_MS) {
-                                continue;
-                            }
-
-                            ControlEvent stopEvent =
-                                    new ControlEvent(
-                                            ControlEvent.EventSource.MIDI,
-                                            lastJogEvent.getPanel(),
-                                            lastJogEvent.getAction(),
-                                            0
-                                    );
-
-                            //DEBUG:
-                            /*System.out.println("==== JOG TIMEOUT =====");
-                            System.out.println("PUBLISH: " + stopEvent.getAction()+ "  source = " + stopEvent.getEventSource());
-*/
-                            outputBus.publish(stopEvent);
-
-                            lastJogEvent = null;
-                        } catch (Exception e) {
-                            e.printStackTrace();
-                        }
+                    if (captureMode) {
+                        continue;
                     }
 
-                }, "JOG-WATCHDOG" );
+                    if (lastJogEvent == null) {
+                        continue;
+                    }
 
-        jogWatchdog.setDaemon(true);
+                    long now = System.currentTimeMillis();
 
-        jogWatchdog.start();
+                    if (now - lastJogEventTime < JOG_TIMEOUT_MS) {
+                        continue;
+                    }
 
-        System.out.println("MidiController started" );
+                    ControlEvent stopEvent =
+                            new ControlEvent(
+                                    ControlEvent.EventSource.MIDI,
+                                    lastJogEvent.getPanel(),
+                                    lastJogEvent.getAction(),
+                                    0
+                            );
+
+                    //DEBUG:
+                    /*System.out.println("==== JOG TIMEOUT =====");
+                    System.out.println("PUBLISH: " + stopEvent.getAction()+ "  source = " + stopEvent.getEventSource());
+*/
+                    outputBus.publish(stopEvent);
+
+                    lastJogEvent = null;
+                } catch (InterruptedException ie){
+                    break;
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+
+        }, "JOG-WATCHDOG" );
+
+        jogWatchdogThread.setDaemon(true);
+        jogWatchdogThread.start();
+        running = true;
+
+        System.out.println("MIDI Controller started" );
+    }
+
+    public synchronized void shutdown() {
+
+        running = false;
+
+        lastJogEvent = null;
+        lastJogEventTime = 0;
+
+        if (inputThread != null) {
+            inputThread.interrupt();
+        }
+
+        if (controllerThread != null) {
+            controllerThread.interrupt();
+        }
+
+        if (jogWatchdogThread != null) {
+            jogWatchdogThread.interrupt();
+        }
+
+        if (midiInputController != null) {
+            midiInputController.close();
+        }
+
+        if (midiOutputController != null) {
+            midiOutputController.close();
+        }
+
+        pendingTasks.values().forEach(task -> task.cancel(true));
+
+        pendingTasks.clear();
+
+        controlQueue.clear();
+        statusQueue.clear();
+        System.out.println("MIDI controller stopped");
     }
 
     private ControlEvent translateInput(MidiEvent event) {
@@ -583,15 +621,14 @@ public class MidiController implements AppConfigManager.ConfigurationListener {
         }
     }
 
-    private void updateCameraIndicators(ControlCore.ControlPanelId selectedPanel) {
+    public void updateCameraIndicators(ControlCore.ControlPanelId selectedPanel) {
 
-        String guiBinding = String.valueOf(controllerManager.getCoreBinding(selectedPanel));
+        ControlCore.ControlPanelId guiBinding = controllerManager.getCoreBinding(selectedPanel);
 
         int activeIndex = -1;
 
         if (guiBinding != null) {
-
-            activeIndex = ControlCore.ControlPanelId.valueOf(guiBinding).ordinal();
+            activeIndex = guiBinding.ordinal();
         }
 
         for (int i = 0;
@@ -640,20 +677,5 @@ public class MidiController implements AppConfigManager.ConfigurationListener {
                         .getDeviceName()
         );
     }
-
-    public void shutdown() {
-
-        running = false;
-
-        if (midiInputController != null) {
-            midiInputController.close();
-        }
-
-        if (midiOutputController != null) {
-            midiOutputController.close();
-        }
-    }
-
-
 
 }

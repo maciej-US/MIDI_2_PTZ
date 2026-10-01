@@ -12,6 +12,7 @@ import java.net.InetSocketAddress;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 
 @Data
 public class PTZCamera {
@@ -20,11 +21,13 @@ public class PTZCamera {
 
     private final String model;
 
+    //Transport
     private String ipAddress;
     private int cameraPort;
     private int localPort;
     private InetAddress address;
     private DatagramSocket socket;
+
 
     private int viscaSessionID = 1;
 
@@ -88,41 +91,9 @@ public class PTZCamera {
         this.controller = new ViscaPTZController(this, config, this.socket.getSoTimeout());
 
         //====== CONFIGURATION ==========
-        //Positions limits
-        FieldDefinition panField =config.getFields().get("panPosition");
-        Map<String, Object> mapping = panField.getMapping();
-        Map<String, Object> mechanicalRange = (Map<String, Object>) mapping.get("mechanicalRange");
-        ParameterState panState = new ParameterState();
-        panState.setMax(((Number) mechanicalRange.get("maxDegrees")).doubleValue());
-        panState.setMin(((Number) mechanicalRange.get("minDegrees")).doubleValue());
-        this.parameters.put("panPosition", panState);
 
-        FieldDefinition tiltField = config.getFields().get("tiltPosition");
-        mapping = tiltField.getMapping();
-        mechanicalRange = (Map<String, Object>) mapping.get("mechanicalRange");
-        ParameterState tiltState = new ParameterState();
-        tiltState.setMax(((Number) mechanicalRange.get("maxDegrees")).doubleValue());
-        tiltState.setMin(((Number) mechanicalRange.get("minDegrees")).doubleValue());
-        this.parameters.put("tiltPosition", tiltState);
-
+        initializeDefaultParameters(config);
         syncPosition();
-
-        //AUTOMIATION PARAMETERS
-        //---- FOCUS
-        /*ParameterState param = new ParameterState();
-        param.setCurrentState("AUTO");
-        FieldDefinition field = controller.getFieldDefinition("focusPosition");
-        param.setMax(field.getMaxRangeValue());
-        param.setMin(field.getMinRangeValue());
-        this.parameters.put("focus", param);
-        setFocusMode("AUTO");
-
-        field = controller.getFieldDefinition("whiteBalanceModePosition");
-        param = new ParameterState();
-        param.setCurrentState("AUTO");
-        this.parameters.put("whiteBalanceModePosition", param);
-        setWhiteBalanceMode("AUTO");*/
-
 
         //DEBUG:
         /* System.out.println ("============ CAMERA CONSTRUCTOR =============\nPARAMETERS LIST: " + this.parameters.keySet());
@@ -317,6 +288,45 @@ public class PTZCamera {
      * =========================================
      *     GETTERS, SETTERS, HELPERS
      * ========================================= */
+
+    private void initializeDefaultParameters(ViscaConfig config) {
+
+        //Positions limits
+        FieldDefinition panField =config.getFields().get("panPosition");
+        Map<String, Object> mapping = panField.getMapping();
+        Map<String, Object> mechanicalRange = (Map<String, Object>) mapping.get("mechanicalRange");
+        ParameterState panState = new ParameterState();
+        panState.setMax(((Number) mechanicalRange.get("maxDegrees")).doubleValue());
+        panState.setMin(((Number) mechanicalRange.get("minDegrees")).doubleValue());
+        this.parameters.put("panPosition", panState);
+
+        FieldDefinition tiltField = config.getFields().get("tiltPosition");
+        mapping = tiltField.getMapping();
+        mechanicalRange = (Map<String, Object>) mapping.get("mechanicalRange");
+        ParameterState tiltState = new ParameterState();
+        tiltState.setMax(((Number) mechanicalRange.get("maxDegrees")).doubleValue());
+        tiltState.setMin(((Number) mechanicalRange.get("minDegrees")).doubleValue());
+        this.parameters.put("tiltPosition", tiltState);
+
+        ParameterState param;
+
+        param = new ParameterState();
+        param.setCurrentState("AUTO");
+
+        FieldDefinition field = controller.getFieldDefinition("focusPosition");
+
+        param.setMin(field.getMinRangeValue());
+        param.setMax(field.getMaxRangeValue());
+
+        parameters.put("focusPosition", param);
+        setFocusMode("AUTO");
+
+        param = new ParameterState();
+        param.setCurrentState("AUTO");
+
+        parameters.put("whiteBalanceMode",param);
+        setWhiteBalanceMode("AUTO");
+    }
 
     public void markOnline(){
         this.online = true;
