@@ -27,7 +27,7 @@ public class PTZCamera {
     private int localPort;
     private InetAddress address;
     private DatagramSocket socket;
-
+    private final Object transactionLock = new Object();
 
     private int viscaSessionID = 1;
 
@@ -133,8 +133,38 @@ public class PTZCamera {
         controller.moveZoomAbsolute(value);
     }
 
+    public void parkCamera(){
+        controller.ptzHomePosition();
+    }
+
     public void stopPanTilt() {
         controller.stopPanTilt();
+    }
+
+    public void tally(int tallyState){
+        switch (tallyState){
+            case 0:
+                controller.executeViscaCommand("tallyOff");
+                break;
+            case 1:
+                controller.executeViscaCommand("tallyOn");
+                break;
+            default:
+                break;
+        }
+    }
+
+    public void autoFollow(int autoFollowMode){
+        switch (autoFollowMode){
+            case 0:
+                controller.executeViscaCommand("autoFollowOff");
+                break;
+            case 1:
+                controller.executeViscaCommand("autoFollowOn");
+                break;
+            default:
+                break;
+        }
     }
 
     public void adjustExposureParameter(String parameterName, int direction){

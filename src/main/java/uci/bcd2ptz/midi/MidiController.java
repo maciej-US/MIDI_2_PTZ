@@ -30,6 +30,7 @@ public class MidiController implements AppConfigManager.ConfigurationListener {
 
     private volatile boolean running = false;
     private volatile boolean captureMode = false;
+    private ControlCore.ControlPanelId camLedAssignment;
     private Thread inputThread;
     private Thread controllerThread;
     private Thread jogWatchdogThread;
@@ -66,6 +67,7 @@ public class MidiController implements AppConfigManager.ConfigurationListener {
         this.config = config;
         this.outputBus = outputBus;
         this.controllerManager = controllerManager;
+        this.camLedAssignment = ControlCore.ControlPanelId.A;
 
         //Reverse binding index
         for (Map.Entry<String, MidiBindingDefinition> entry : config.getBindings().entrySet()) {
@@ -271,16 +273,17 @@ public class MidiController implements AppConfigManager.ConfigurationListener {
 
             //PANEL SWITCHING
             if ("PANEL_SELECT_A".equals(binding.getAction())) {
-
+                this.camLedAssignment = ControlCore.ControlPanelId.A;
                 reassignControls(ControlCore.ControlPanelId.A);
-                updateCueIndicators(ControlCore.ControlPanelId.A);
+                updateCueIndicators();
                 updateCameraIndicators(ControlCore.ControlPanelId.A);
                 return null;
             }
 
             if ("PANEL_SELECT_B".equals(binding.getAction())) {
+                this.camLedAssignment = ControlCore.ControlPanelId.B;
                 reassignControls(ControlCore.ControlPanelId.B);
-                updateCueIndicators(ControlCore.ControlPanelId.B);
+                updateCueIndicators();
                 updateCameraIndicators(ControlCore.ControlPanelId.B);
                 return null;
             }
@@ -320,9 +323,33 @@ public class MidiController implements AppConfigManager.ConfigurationListener {
     private void translateOutput(MidiControlDefinition control, ControlEvent event) {
 
         //DEBUG
-        //System.out.println("translate output from panel " + event.getPanel() + " ==> " + event + "  |  " + control.toString());
+        System.out.println("translate output from panel " + event.getPanel() + " ==> " + event + "  |  " + control.toString());
 
-        String controlName = outputBindings.get(event.getPanel() + ":" + event.getAction());
+        ControlCore.ControlPanelId outputPanel = event.getPanel();
+
+        if (event.getAction().startsWith("CAM_SELECT_")
+                && event.getAction().endsWith("_INDICATOR")) {
+
+            ControlCore.ControlPanelId corePanel = event.getPanel();
+
+            ControlCore.ControlPanelId midiPanel = controllerManager.getMidiBinding(corePanel);
+
+            // kamera nie jest przypisana do żadnego panelu MIDI
+            if (midiPanel == null) {
+                return;
+            }
+
+            // LED-y aktualnie pokazują inny panel MIDI
+            if (midiPanel != this.camLedAssignment) {
+                return;
+            }
+
+            outputPanel = camLedAssignment;
+        }
+
+        System.out.println("LEDS bindend to panel: " + camLedAssignment + "   |  event panel: " + event.getPanel() + "  | MIDI panel:" + outputPanel);
+
+        String controlName = outputBindings.get(outputPanel + ":" + event.getAction());
 
         if (controlName == null) {
             if (controllerManager.getMidiBinding(event.getPanel()) != null) {
@@ -605,20 +632,25 @@ public class MidiController implements AppConfigManager.ConfigurationListener {
 
     }
 
-    private void updateCueIndicators(ControlCore.ControlPanelId selectedPanel) {
+    private void updateCueIndicators() {
 
-        for (ControlCore.ControlPanelId panel :
-                ControlCore.ControlPanelId.values()) {
+        sendControlEvent(
+                new ControlEvent(
+                        MIDI,
+                        ControlCore.ControlPanelId.A,
+                        "PANEL_SELECT_INDICATOR",
+                        this.camLedAssignment == ControlCore.ControlPanelId.A ? 1 : 0
+                )
+        );
 
-            sendControlEvent(
-                    new ControlEvent(
-                            MIDI,
-                            panel,
-                            "PANEL_SELECT_INDICATOR",
-                            panel == selectedPanel ? 1 : 0
-                    )
-            );
-        }
+        sendControlEvent(
+                new ControlEvent(
+                        MIDI,
+                        ControlCore.ControlPanelId.B,
+                        "PANEL_SELECT_INDICATOR",
+                        this.camLedAssignment == ControlCore.ControlPanelId.B ? 1 : 0
+                )
+        );
     }
 
     public void updateCameraIndicators(ControlCore.ControlPanelId selectedPanel) {

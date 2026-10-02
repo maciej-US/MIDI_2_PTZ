@@ -163,7 +163,7 @@ public class MidiControllerManager implements AppConfigManager.ConfigurationList
         }
     }
 
-    private void stopController() {
+    public void stopController() {
 
         if (controller != null) {
             controller.shutdown();

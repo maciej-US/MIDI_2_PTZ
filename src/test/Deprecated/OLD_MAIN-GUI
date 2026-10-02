@@ -97,6 +97,7 @@ public class MainGUI implements Runnable, ControlEventListener {
 
         exitItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_F4, InputEvent.ALT_DOWN_MASK));
         exitItem.addActionListener(e -> {
+            came
             frame.dispatchEvent(new WindowEvent(frame, WindowEvent.WINDOW_CLOSING));
         });
 

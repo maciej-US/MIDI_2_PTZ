@@ -446,6 +446,18 @@ public class ViscaPTZController {
             return false;
         }
 
+        if (response.length == 3
+                && (response[0] & 0xFF) == 0x90
+                && (response[1] & 0xFF) == 0x51
+                && (response[2] & 0xFF) == 0xFF) {
+
+            LOGGER.fine(
+                    "Ignoring VISCA status response: "
+                            + bytesToHex(response, response.length)
+            );
+            return false;
+        }
+
         // Pobranie definicji pola
 
         FieldDefinition field = getFieldDefinition(parameterName);
@@ -646,7 +658,6 @@ public class ViscaPTZController {
         return true;
     }
 
-    @Deprecated
     public boolean powerStatusRequest() {
 
         try {
@@ -842,9 +853,11 @@ public class ViscaPTZController {
     public void stopPanTilt() {
 
         executeViscaCommand("stopPanTilt");
+    }
 
-        //DEBUG:
-        //System.out.println("UDP Pakiet send: " + bytesToHex(payload, payload.length));
+    /** Park camera in home position*/
+    public void ptzHomePosition(){
+        executeViscaCommand("ptzHomePosition");
     }
 
     /**

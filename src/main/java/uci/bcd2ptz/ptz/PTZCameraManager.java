@@ -31,6 +31,7 @@ public class PTZCameraManager {
     private DatagramSocket socket = null;
     private String localIP;
     private int localPort;
+    private boolean running = true;
 
     private static final Logger LOGGER = Logger.getLogger(PTZCameraManager.class.getName());
     private ControlEventBus inputBus;
@@ -54,7 +55,7 @@ public class PTZCameraManager {
 
         this.receiverThread =
                 new Thread(() -> {
-                    while (true) {
+                    while (running) {
 
                         DatagramPacket packet = new DatagramPacket(new byte[1024], 1024);
                         try {
@@ -69,6 +70,7 @@ public class PTZCameraManager {
                                                 packet.getData(),
                                                 packet.getLength()));
                                 pending.markResponseReceived();
+                                pendingPackets.remove(senderKey);
                             }
                         }catch (IOException e){
                             LOGGER.warning("Communication error for camera on " + packet.getAddress() +":" + packet.getPort());
@@ -90,26 +92,29 @@ public class PTZCameraManager {
 
     public PendingPacket sendPacket(PTZCamera camera, byte[] udpPacket) throws IOException, InterruptedException {
 
-        DatagramPacket packet =
-                new DatagramPacket(
-                        udpPacket,
-                        udpPacket.length,
-                        InetAddress.getByName(
-                                camera.getIpAddress()
-                        ),
-                        camera.getCameraPort()
-                );
+        synchronized (camera.getTransactionLock()) {
+            DatagramPacket packet =
+                    new DatagramPacket(
+                            udpPacket,
+                            udpPacket.length,
+                            InetAddress.getByName(
+                                    camera.getIpAddress()
+                            ),
+                            camera.getCameraPort()
+                    );
 
-        PendingPacket pending = new PendingPacket(
-                        udpPacket,
-                        camera.getIpAddress(),
-                        camera.getCameraPort()
-                );
+            PendingPacket pending = new PendingPacket(
+                    udpPacket,
+                    camera.getIpAddress(),
+                    camera.getCameraPort()
+            );
 
-        pendingPackets.put(camera.getIpAddress() + ":" + camera.getCameraPort(), pending);
-
-        socket.send(packet);
-        return pending;
+            try {
+                pendingPackets.put(camera.getIpAddress() + ":" + camera.getCameraPort(), pending);
+                socket.send(packet);
+                return pending;
+            } finally{}
+        }
     }
 
 
@@ -164,6 +169,14 @@ public class PTZCameraManager {
         if (camera == null) {
             return;
         }
+
+        try{
+            camera.stopPanTilt();
+        }catch (Exception e){
+            LOGGER.warning("Unable to stop camera: " + cameraId);
+        }
+
+        pendingPackets.remove(camera.getCameraId() + ":" + camera.getCameraPort());
         guiPanelAssignments.values().removeIf(c -> c == camera);
         midiPanelAssignments.values().removeIf(c -> c == camera);
     }
@@ -319,6 +332,19 @@ public class PTZCameraManager {
             LOGGER.warning("Refresh connection failed for " + camera.getCameraId());
             return false;
         }
+    }
+
+    public void shutdown(){
+        running = false;
+        for (PTZCamera camera : cameras.values()){
+            try{
+                camera.parkCamera();
+            }catch (Exception e){
+                LOGGER.warning("Unable to stop camera: " + camera.getCameraId());
+            }
+        }
+        socket.close();
+        receiverThread.interrupt();
     }
 
     public int getLocalPort(){

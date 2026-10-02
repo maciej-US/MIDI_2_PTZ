@@ -83,7 +83,7 @@ public class ControlCore {
     private boolean waitingForStateSync = false;
 
     //LOGGER
-    private static final Logger LOGGER = Logger.getLogger(ControlCore.class.getName());
+    public static final Logger LOGGER = Logger.getLogger(ControlCore.class.getName());
 
      /*========================================
              KONSTRUKTOR i URUCHOMIANIE
@@ -192,8 +192,6 @@ public class ControlCore {
             handleCameraSelect(event);
             return;
         }
-
-
 
         ControlPanel targetPanel = panels.get(resolveControlPanel(event));
 
@@ -921,7 +919,7 @@ public class ControlCore {
         ModeState tallyStatus = null;
 
         if (panel.getStates().get(TALLY) == ModeState.OFF) {
-            camera.recallPreset("tally_On");
+            camera.tally(1);
             tallyStatus = ModeState.ON;
             sendControlEvent(new ControlEvent(SYSTEM,
                     panel.getId(),
@@ -929,7 +927,7 @@ public class ControlCore {
                     1));
         }
         if (panel.getStates().get(TALLY) == ModeState.ON) {
-            camera.recallPreset("tally_Off");
+            camera.tally(0);
             tallyStatus = ModeState.OFF;
             sendControlEvent(new ControlEvent(SYSTEM,
                     panel.getId(),
@@ -957,7 +955,7 @@ public class ControlCore {
         ModeState autoFollowStatus = null;
 
         if (panel.getStates().get(AUTO_FOLLOW) == ModeState.OFF) {
-            camera.recallPreset("smartShoot_On");
+            camera.autoFollow(1);
             autoFollowStatus = ModeState.ON;
             sendControlEvent(new ControlEvent (
                     SYSTEM,
@@ -967,7 +965,7 @@ public class ControlCore {
         }
 
         if (panel.getStates().get(AUTO_FOLLOW) == ModeState.ON) {
-            camera.recallPreset("smartShoot_Off");
+            camera.autoFollow(0);
             autoFollowStatus = ModeState.OFF;
             sendControlEvent(new ControlEvent (
                     SYSTEM,
@@ -1473,6 +1471,7 @@ public class ControlCore {
             return;
         }
 
+
         for (ControlPanel panel : panels.values()) {
 
             PTZCamera camera = cameraManager.getCoreAssignedCamera(panel.getId());
@@ -1528,10 +1527,12 @@ public class ControlCore {
 
         // już przypisany
         if (currentMidiBinding == midiPanel) {
-            System.out.println("CORE PANEL "+ targetCorePanel+ " ALREADY ASSIGNED TO MIDI PANEL "+ midiPanel);
+            //DEBUG:
+            //System.out.println("CORE PANEL "+ targetCorePanel+ " ALREADY ASSIGNED TO MIDI PANEL "+ midiPanel);
             return;
         }
 
+        //DEBUG
         System.out.println("ASSIGN MIDI PANEL " + midiPanel + " -> CORE PANEL " + targetCorePanel);
 
         midiManager.assignMidiPanel(midiPanel,targetCorePanel);

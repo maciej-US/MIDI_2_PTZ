@@ -18,7 +18,7 @@ public class ButtonLED extends JComponent {
     private final String label;
 
     // ===== KOLORY =====
-    private static final Color LED_ON = Color.decode("#FFBF00");
+    private final Color LED_ON;
     private static final Color LED_OFF = new Color(50, 50, 50);
 
     private static final Color BORDER = new Color(0, 0, 0);
@@ -49,8 +49,9 @@ public class ButtonLED extends JComponent {
     private boolean pressed = false;
 
     // ===== KONSTRUKTOR =====
-    public ButtonLED(String label) {
+    public ButtonLED(String label, Color ledOnColor) {
         this.label = label;
+        this.LED_ON = ledOnColor;
 
         Dimension fixedSize = new Dimension(45, 40);
         setPreferredSize(fixedSize);

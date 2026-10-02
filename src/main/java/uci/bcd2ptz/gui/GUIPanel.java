@@ -42,14 +42,15 @@ public class GUIPanel
     private RotarySwitch whiteBalanceMode;
 
     //BUTTONS
-    private final ButtonLED PTZModeButton = new ButtonLED("ABS");
-    private final ButtonLED autoFollowModeButton = new ButtonLED("A-SH");
-    private final ButtonLED exposureModeButton = new ButtonLED("AUTO");
-    private final ButtonLED focusModeButton = new ButtonLED("A-FC");
-    private final ButtonLED focusOnePushButton = new ButtonLED("PUSH");
-    private final ButtonLED onePushWB = new ButtonLED("WB");
+    private final ButtonLED PTZModeButton = new ButtonLED("ABS",  new Color (255,191,0));
+    private final ButtonLED autoFollowModeButton = new ButtonLED("A-SH", new Color (255,191,0));
+    private final ButtonLED exposureModeButton = new ButtonLED("AUTO", new Color (255,191,0));
+    private final ButtonLED focusModeButton = new ButtonLED("A-FC", new Color (255,191,0));
+    private final ButtonLED focusOnePushButton = new ButtonLED("PUSH", new Color (255,191,0));
+    private final ButtonLED onePushWB = new ButtonLED("WB", new Color (255,191,0));
     private final Button focusMoveUpButton = new Button(">>");
     private final Button focusMoveDownButton = new Button("<<");
+    private final ButtonLED reconnectButton = new ButtonLED("CON", new Color (200,0,0));
 
     //INDICATORS
     private final OnAirIndicator onAirIndicator = new OnAirIndicator();
@@ -71,17 +72,19 @@ public class GUIPanel
     ControlCore.ControlPanelId panelId;
     private volatile boolean initialized = false;
     private final AppConfig appConfig;
+    private final MainGUI parentGUI;
 
 
     //============ CONSTRUCTOR ===================
 
-    public GUIPanel(ControlCore.ControlPanelId panelId, ControlEventBus outputBus,  PTZCameraManager cameraManger, MidiControllerManager midiManager, AppConfig appConfig) {
+    public GUIPanel(ControlCore.ControlPanelId panelId, ControlEventBus outputBus, MainGUI parentGUI,
+                    PTZCameraManager cameraManger, MidiControllerManager midiManager, AppConfig appConfig) {
 
         super (new GridBagLayout());
 
         //DEBUG:
         //System.out.println("GUIPanel " + panelId + " constructor");
-
+        this.parentGUI = parentGUI;
         this.cameraManager = cameraManger;
         this.midiManager = midiManager;
         this.panelId = panelId;
@@ -482,6 +485,9 @@ public class GUIPanel
         statusInfo.setForeground(okColor);
         statusInfo.setFont(statusInfo.getFont().deriveFont(statusInfo.getFont().getSize2D() * 1.2f));
 
+        // --- RECONNECT BUTTON
+        reconnectButton.setOnClick(() -> parentGUI.reconnectCamera(panelId));
+
         //==================================
         //             MAIN LAYOUT
         // =================================
@@ -500,7 +506,7 @@ public class GUIPanel
         statusGbc.gridheight = 2;
         statusPanel.add(panelLabel, statusGbc);
 
-        // --------- CAmera desriction ==> STATUS PANEL
+        // --------- Camera description ==> STATUS PANEL
         statusGbc.gridx = 1;
         statusGbc.gridheight = 1;
         statusPanel.add(cameraLabel, statusGbc);
@@ -509,6 +515,13 @@ public class GUIPanel
         statusGbc.gridx = 1;
         statusGbc.gridy = 1;
         statusPanel.add(statusInfo, statusGbc);
+
+        // --------- RECONNECT BUTTON ==> STATUS PANEL
+        statusGbc.gridx = 2;
+        statusGbc.gridy = 0;
+        statusGbc.gridheight = 2;
+        statusGbc.insets = new Insets(3, 25, 0, 10);
+        statusPanel.add(reconnectButton, statusGbc);
 
 
         //==== EXPOSURE PANEL
@@ -819,21 +832,28 @@ public class GUIPanel
         mainPanelGBC.gridwidth = 3;
         mainPanel.add(statusPanel, mainPanelGBC);
 
-        //------- UPPER PANEL ===> MAIN PANEL
+        //----- SEPARATOR ==> MAIN PANEL
+        HorizontalSeparator horizontalSeparator1 = new HorizontalSeparator();
+        mainPanelGBC.insets = new Insets(2, 5, 2, 5);
         mainPanelGBC.gridy = 1;
+        mainPanelGBC.fill = GridBagConstraints.HORIZONTAL;
+        mainPanel.add(horizontalSeparator1, mainPanelGBC);
+
+        //------- UPPER PANEL ===> MAIN PANEL
+        mainPanelGBC.gridy = 2;
         mainPanelGBC.gridwidth = 3;
         mainPanel.add(upperPanel, mainPanelGBC);
 
         //----- SEPARATOR ==> MAIN PANEL
-        HorizontalSeparator horizontalSeparator1 = new HorizontalSeparator();
+        HorizontalSeparator horizontalSeparator2 = new HorizontalSeparator();
         mainPanelGBC.insets = new Insets(2, 5, 2, 5);
-        mainPanelGBC.gridy = 2;
+        mainPanelGBC.gridy = 3;
         mainPanelGBC.fill = GridBagConstraints.HORIZONTAL;
-        mainPanel.add(horizontalSeparator1, mainPanelGBC);
+        mainPanel.add(horizontalSeparator2, mainPanelGBC);
 
         //--------- COntrol panel ===> MAIN PANEL
         mainPanelGBC.insets = new Insets(0, 0, 0, 0);
-        mainPanelGBC.gridy = 3;
+        mainPanelGBC.gridy = 4;
         mainPanel.add(controlPanel, mainPanelGBC);
         add(mainPanel, BorderLayout.CENTER);
 
@@ -1100,7 +1120,7 @@ public class GUIPanel
         return this.midiPanelInfo;
     }
 
-    //=== STATUS INFO UPDATE
+    //=== STATUS INFO MANGEMENT
     public void refreshStatusInfo() {
 
         boolean online = cameraManager.isCameraOnline(panelId);
@@ -1108,9 +1128,13 @@ public class GUIPanel
         if (online) {
             statusInfo.setText("ONLINE");
             statusInfo.setForeground(okColor);
+            reconnectButton.setMode(LedMode.OFF);
+            reconnectButton.setEnabled(false);
         } else {
             statusInfo.setText("OFFLINE");
             statusInfo.setForeground(errorColor);
+            reconnectButton.setMode(LedMode.BLINK);
+            reconnectButton.setEnabled(true);
         }
 
         //DEBUG
@@ -1125,5 +1149,17 @@ public class GUIPanel
                         : "-----------");
 
     }
+
+    public void reconnectCamera() {
+
+        PTZCamera camera = cameraManager.getCoreAssignedCamera(panelId);
+
+        if (camera == null) {
+            return;
+        }
+        cameraManager.refreshConnection(panelId);
+
+    }
+
 
 }

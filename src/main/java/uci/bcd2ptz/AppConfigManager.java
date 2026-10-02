@@ -29,11 +29,22 @@ public class AppConfigManager {
 
     public AppConfig load() throws IOException {
         this.config = MAPPER.readValue(configFile, AppConfig.class);
-        return this.config;    }
+        return this.config;
+    }
+
+    public AppConfig load(File file) throws IOException {
+        this.config = MAPPER.readValue(file, AppConfig.class);
+        return this.config;
+    }
 
     public void save(AppConfig config) throws IOException {
 
         MAPPER.writeValue(configFile, config);
+    }
+
+    public void save(AppConfig config, File targetFile) throws IOException {
+
+        MAPPER.writeValue(targetFile, config);
     }
 
     public boolean exists() {

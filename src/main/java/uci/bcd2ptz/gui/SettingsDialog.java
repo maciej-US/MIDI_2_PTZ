@@ -256,10 +256,19 @@ public class SettingsDialog extends JDialog {
         JPanel panel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
 
         JButton applyButton = new JButton("Zastosuj");
-        applyButton.addActionListener(e -> applyConfiguration());
+        applyButton.addActionListener(e -> {
+            updateConfiguration();
+            gui.reloadConfiguration(appConfig);
+
+        });
 
         JButton saveButton = new JButton("Zapisz");
-        saveButton.addActionListener(e -> saveConfiguration());
+        saveButton.addActionListener(e -> {
+            updateConfiguration();
+            gui.reloadConfiguration(appConfig);
+            gui.saveConfiguration(appConfig);
+            dispose();
+        });
 
         JButton cancelButton = new JButton("Anuluj");
         cancelButton.addActionListener(e -> dispose());
@@ -341,7 +350,7 @@ public class SettingsDialog extends JDialog {
         components.configField.setEditable(false);
 
         if (cameraConfig != null ){
-            PTZCamera camera = cameraManager.getCamera("CAM_" + panelId.name());
+            PTZCamera camera = cameraManager.getCameras().get("CAM_" + panelId.name());
             if (camera != null  && camera.getModel() != null){
                 components.configField.setText(camera.getModel());
                 components.configPath = appConfig.getSystem().getCameras().stream()
@@ -357,6 +366,11 @@ public class SettingsDialog extends JDialog {
         components.browseButton = new JButton("Wczytaj");
         components.browseButton.addActionListener(e -> {
             JFileChooser chooser = new JFileChooser();
+            File configDir = new File("config");
+            if (!configDir.exists()) {
+                configDir.mkdirs();
+            }
+            chooser.setCurrentDirectory(configDir);
             chooser.setFileFilter(new FileNameExtensionFilter("JSON Files","json"));
 
             if (chooser.showOpenDialog(SettingsDialog.this) == JFileChooser.APPROVE_OPTION) {
@@ -527,7 +541,7 @@ public class SettingsDialog extends JDialog {
     //   BUTTONS HANDLERS
     //==============================
 
-    private void applyConfiguration() {
+    private void updateConfiguration() {
 
         //=== MIDI
         MidiDeviceInfo input = (MidiDeviceInfo) inputComboBox.getSelectedItem();
@@ -554,7 +568,6 @@ public class SettingsDialog extends JDialog {
         appConfig.getSystem().getMidi().getOutput().setConfigFile(configFile);
 
         // ===== CAMERAS
-        Set<String> existingCameras = new HashSet<>(cameraManager.getCameras().keySet());
         appConfig.getSystem().getCameras().clear();
         try {
             for (Map.Entry<ControlCore.ControlPanelId, CameraPanelComponents> entry : cameraPanels.entrySet()) {
@@ -609,20 +622,20 @@ public class SettingsDialog extends JDialog {
                 camera.setPort(port);
                 camera.setViscaDefinition(configPath);
 
-                int socketTimeout = ((Number) appConfig.getSystem().getTransport().get("socketTimeout")).intValue();
-
                 String midiPanelValue = (String) panel.midiPanelCombo.getSelectedItem();
 
-                ControlCore.ControlPanelId midiPanel = null;
-
-                if (midiPanelValue != null && !midiPanelValue.isBlank()) {
-                    midiPanel = ControlCore.ControlPanelId.valueOf(midiPanelValue);
-                }
-
-                camera.setAssignedMidiPanel((midiPanelValue == null || midiPanelValue.isBlank())? null : midiPanelValue);
+                camera.setAssignedMidiPanel((midiPanelValue == null || midiPanelValue.isBlank()) ? null : midiPanelValue);
                 appConfig.getSystem().getCameras().add(camera);
+            }
+        }catch (Exception exc) {
+            JOptionPane.showMessageDialog(this,
+                    exc.getMessage(),
+                    "Bład konfiguracji.",
+                    JOptionPane.ERROR_MESSAGE);
+        }
+    }
 
-                try {
+                /*try {
                     if (config != null) {
                         cameraManager.addCamera(camera.getCameraId(),
                                 camera.getIpAddress(),
@@ -661,12 +674,11 @@ public class SettingsDialog extends JDialog {
             gui.rebuildPanels();
             gui.refreshStatusInfo();
         });
-        System.out.println("Configuration applied.");
-    }
+        System.out.println("Configuration applied.");*/
 
     private void saveConfiguration() {
 
-        applyConfiguration();
+        /*updateConfiguration();
         try {
             configManager.save(appConfig);
             configManager.notifyConfigurationChanged();
@@ -675,7 +687,7 @@ public class SettingsDialog extends JDialog {
 
         } catch (Exception ex) {
             JOptionPane.showMessageDialog(this,"Błąd zapisu konfiguracji:\n"+ ex.getMessage(),"Błąd",JOptionPane.ERROR_MESSAGE);
-        }
+        }*/
 
     }
 
