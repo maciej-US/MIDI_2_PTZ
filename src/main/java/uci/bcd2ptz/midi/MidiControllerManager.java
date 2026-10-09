@@ -1,26 +1,25 @@
 package uci.bcd2ptz.midi;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import uci.bcd2ptz.AppConfig;
-import uci.bcd2ptz.AppConfigManager;
+import uci.bcd2ptz.config.AppConfig;
+import uci.bcd2ptz.config.AppConfigManager;
 import uci.bcd2ptz.Main;
+import uci.bcd2ptz.config.ConfigurationUpdateResults;
 import uci.bcd2ptz.core.ControlCore;
 import uci.bcd2ptz.core.ControlEventBus;
 
+import javax.sound.midi.MidiDevice;
+import javax.sound.midi.MidiSystem;
 import java.io.File;
 import java.util.EnumMap;
 import java.util.Map;
 
-import static uci.bcd2ptz.core.ControlCore.ControlPanelId.*;
-
-public class MidiControllerManager implements AppConfigManager.ConfigurationListener {
+public class MidiControllerManager {
 
 
     //API ELEMTS
     private final AppConfigManager configManager;
     private final ControlEventBus eventBus;
-    //private final PTZCameraManager cameraManager;
-
     private final ControlCore.RunMode runMode;
 
     //MIDI
@@ -28,11 +27,7 @@ public class MidiControllerManager implements AppConfigManager.ConfigurationList
     private final Map<ControlCore.ControlPanelId, ControlCore.ControlPanelId> midiToCoreBindings = new EnumMap<>(ControlCore.ControlPanelId.class);
     private final Map<ControlCore.ControlPanelId, ControlCore.ControlPanelId> coreToMidiBindings = new EnumMap<>(ControlCore.ControlPanelId.class);
 
-    public MidiControllerManager(
-            AppConfigManager configManager,
-            ControlEventBus eventBus,
-            //PTZCameraManager cameraManager,
-            ControlCore.RunMode runMode) {
+    public MidiControllerManager(AppConfigManager configManager, ControlEventBus eventBus, ControlCore.RunMode runMode) {
 
         this.configManager = configManager;
         this.eventBus = eventBus;
@@ -40,27 +35,26 @@ public class MidiControllerManager implements AppConfigManager.ConfigurationList
         this.runMode = runMode;
     }
 
-    public void initialize() {
+    public ConfigurationUpdateResults initialize() {
 
-        reloadController();
-    }
+        ConfigurationUpdateResults results = new ConfigurationUpdateResults();
 
-    private void reloadController() {
-
-        stopController();
+        if (controller!= null && controller.isRunning()){
+            stopController();
+        }
 
         if (!isConfigured()) {
-
-            System.out.println("[MIDI] Not configured.");
-            return;
+            results.getErrors().put(AppConfigManager.ConfigurationSection.MIDI, "MIDI not configured.");
+            return results;
         }
 
         if (!isAvailable()) {
-
-            System.out.println("[MIDI] Device not available.");
-            return;
+            results.getErrors().put(AppConfigManager.ConfigurationSection.MIDI, "MIDI device not available.");
+            return results;
         }
         startController();
+
+        return results;
     }
 
     private boolean isConfigured() {
@@ -172,13 +166,6 @@ public class MidiControllerManager implements AppConfigManager.ConfigurationList
         }
     }
 
-    @Override
-    public void configurationChanged(AppConfig config) {
-        System.out.println("[MIDI] Configuration changed.");
-        reloadController();
-        updateMidiIndicators();
-    }
-
     public void updateMidiIndicators() {
 
         for (ControlCore.ControlPanelId corePanel : ControlCore.ControlPanelId.values()) {
@@ -231,19 +218,41 @@ public class MidiControllerManager implements AppConfigManager.ConfigurationList
         }
     }
 
-    public void unassignMidiPanel(ControlCore.ControlPanelId midiPanel) {
-
-        ControlCore.ControlPanelId corePanel = midiToCoreBindings.remove(midiPanel);
-
-        if (corePanel != null) {
-            coreToMidiBindings.remove(corePanel);
-        }
-    }
-
     public void clearBindings() {
 
         midiToCoreBindings.clear();
         coreToMidiBindings.clear();
     }
+
+    //=============================
+    //    STATIC LOADING METHODS
+    //=============================
+
+    public static void validateConfiguration(AppConfig config, ControlCore.RunMode mode) throws Exception {
+
+        //Debug
+        System.out.println("[MIDI CONTROLLER] config validation in " + mode + " mode");
+
+        AppConfig.MidiEndpoint input = config.getSystem().getMidi().getInput();
+        AppConfig.MidiEndpoint output = config.getSystem().getMidi().getOutput();
+
+        ObjectMapper mapper = new ObjectMapper();
+
+        MidiConfig midiConfig = mapper.readValue(new File(input.getConfigFile()), MidiConfig.class);
+
+        MidiController controller =
+                new MidiController(
+                        midiConfig,
+                        output.getDeviceIndex(),
+                        input.getDeviceIndex(),
+                        null,
+                        mode,
+                        null
+                );
+
+        controller.shutdown();
+    }
+
+
 
 }

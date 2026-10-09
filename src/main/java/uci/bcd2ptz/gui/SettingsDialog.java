@@ -3,8 +3,9 @@ package uci.bcd2ptz.gui;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Data;
-import uci.bcd2ptz.AppConfig;
-import uci.bcd2ptz.AppConfigManager;
+import uci.bcd2ptz.config.AppConfig;
+import uci.bcd2ptz.config.AppConfigManager;
+import uci.bcd2ptz.config.ConfigurationUpdateResults;
 import uci.bcd2ptz.core.ControlCore;
 import uci.bcd2ptz.midi.MidiControllerManager;
 import uci.bcd2ptz.ptz.PTZCamera;
@@ -19,14 +20,16 @@ import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
 import java.io.File;
 import java.io.IOException;
+import java.net.InetAddress;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.HashMap;
-import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Set;
+
+import static uci.bcd2ptz.core.ControlCore.LOGGER;
 
 //Data management
 public class SettingsDialog extends JDialog {
@@ -35,15 +38,17 @@ public class SettingsDialog extends JDialog {
     private JComboBox<MidiDeviceInfo> inputComboBox;
     private JComboBox<MidiDeviceInfo> outputComboBox;
     private JTextField midiMappingFileField;
-    private final MidiControllerManager midiControllerManager;
 
-    //CAMERA PANEL
-    private final Map<ControlCore.ControlPanelId, CameraPanelComponents> cameraPanels = new HashMap<>();
+
+    //CAMERA page
+    private final Map<ControlCore.ControlPanelId, CameraPanelComponents> cameraPanels = new LinkedHashMap<>();
 
     private final Map<ControlCore.ControlPanelId, JLabel> cameraStatusLabels;
     private final Map<ControlCore.ControlPanelId, JButton> cameraTestButtons;
 
-    private AppConfig appConfig;
+    //GENERAL page
+    GeneralPanelComponents systemPanelComponents = new GeneralPanelComponents();
+
     private final AppConfigManager configManager;
     private final PTZCameraManager cameraManager;
     private final MainGUI gui;
@@ -52,24 +57,22 @@ public class SettingsDialog extends JDialog {
     private final Color errorColor = new Color (200, 0, 0);
 
     public SettingsDialog(JFrame owner, AppConfigManager appConfigManager,
-                          PTZCameraManager cameraManager, MidiControllerManager controllerManager,MainGUI gui) {
+                          PTZCameraManager cameraManager, MainGUI gui) {
 
 
         super(owner, "Ustawienia", true);
 
         this.configManager = appConfigManager;
-        this.appConfig = appConfigManager.getConfig();
         this.cameraManager = cameraManager;
         this.gui = gui;
-        this.midiControllerManager = controllerManager;
 
         this.cameraStatusLabels = new HashMap<>();
         this.cameraTestButtons = new HashMap<>();
 
         JTabbedPane tabs = new JTabbedPane();
-        tabs.addTab("Ogólne",createGeneralPanel());
-        tabs.addTab("MIDI",createMidiPanel(appConfig));
-        tabs.addTab("Kamery",createCameraPanel(appConfig));
+        tabs.addTab("Kamery",createCameraPanel(appConfigManager.getConfig()));
+        tabs.addTab("System",createGeneralPanel());
+        tabs.addTab("MIDI",createMidiPanel(appConfigManager.getConfig()));
 
         add(tabs, BorderLayout.CENTER);
         add(createButtonPanel(), BorderLayout.SOUTH);
@@ -80,19 +83,74 @@ public class SettingsDialog extends JDialog {
 
     private JPanel createGeneralPanel() {
 
-        JPanel panel = new JPanel(
-                new BorderLayout()
-        );
+        JPanel generalPanel = new JPanel();
 
-        panel.add(
-                new JLabel(
-                        "Ustawienia ogólne systemu będą dostępne w kolejnych wersjach.",
-                        SwingConstants.CENTER
-                ),
-                BorderLayout.CENTER
-        );
+        JPanel transportPanel = new JPanel(new GridBagLayout());
+        GridBagConstraints transportGbc = new GridBagConstraints();
+        transportGbc.insets = new Insets(2,3,2,3);
 
-        return panel;
+
+        String localAutoIP = "";
+        try {
+            localAutoIP = InetAddress.getLocalHost().getHostAddress();
+        }catch (Exception e){
+            LOGGER.warning("No active network connection");
+        }
+
+        systemPanelComponents = new GeneralPanelComponents();
+        systemPanelComponents.autoIpCheckBox = new JCheckBox("IP Auto");
+        systemPanelComponents.localIpField = new JTextField(15);
+        systemPanelComponents.localPortField = new JTextField(6);
+
+        Map<String, Object> transportConfig = configManager.getConfig().getSystem().getTransport();
+        boolean autoIP = Boolean.TRUE.equals(transportConfig.get("autoIp"));
+        systemPanelComponents.autoIpCheckBox.setSelected(autoIP);
+        String finalLocalAutoIP = localAutoIP;
+        systemPanelComponents.autoIpCheckBox.addActionListener(e -> {
+            boolean autoIp = systemPanelComponents.autoIpCheckBox.isSelected();
+            systemPanelComponents.localIpField.setEnabled(!autoIp);
+            if (autoIp) {
+                systemPanelComponents.localIpField.setText(finalLocalAutoIP);
+            }
+
+        });
+
+        systemPanelComponents.localIpField.setText(String.valueOf(transportConfig.getOrDefault("localIp", "")));
+        systemPanelComponents.localIpField.setEnabled(!systemPanelComponents.autoIpCheckBox.isSelected());
+        if (systemPanelComponents.autoIpCheckBox.isSelected()){
+            systemPanelComponents.localIpField.setText(localAutoIP);
+        }
+
+        systemPanelComponents.localPortField.setText(String.valueOf(transportConfig.getOrDefault("localPort", "52381")));
+
+        transportGbc.gridx = 0;
+        transportGbc.gridy = 0;
+        transportGbc.gridwidth = 2;
+        transportPanel.add(systemPanelComponents.autoIpCheckBox, transportGbc);
+
+        transportGbc.gridwidth = 1;
+
+        transportGbc.gridx = 0;
+        transportGbc.gridy = 1;
+        transportGbc.anchor = GridBagConstraints.EAST;
+        transportPanel.add(new JLabel("Adres IP aplikacji:"), transportGbc);
+
+        transportGbc.gridx = 1;
+        transportGbc.anchor = GridBagConstraints.WEST;
+        transportPanel.add(systemPanelComponents.localIpField, transportGbc);
+
+        transportGbc.gridx = 0;
+        transportGbc.gridy = 2;
+        transportGbc.anchor = GridBagConstraints.EAST;
+        transportPanel.add(new JLabel("Port:"), transportGbc);
+
+        transportGbc.gridx = 1;
+        transportGbc.anchor = GridBagConstraints.WEST;
+        transportPanel.add(systemPanelComponents.localPortField, transportGbc);
+
+        generalPanel.add(transportPanel, BorderLayout.NORTH);
+
+        return generalPanel;
     }
 
     private JPanel createMidiPanel(AppConfig config) {
@@ -151,7 +209,12 @@ public class SettingsDialog extends JDialog {
 
         JButton browseButton = new JButton("Przeglądaj...");
         browseButton.addActionListener(e -> {
+            File configPath = new File("config");
+            if (!configPath.exists()) {
+                configPath.mkdirs();
+            }
             JFileChooser chooser = new JFileChooser();
+            chooser.setCurrentDirectory(configPath);
             chooser.setFileFilter(new FileNameExtensionFilter("JSON Files","json"));
 
             if (chooser.showOpenDialog(panel) == JFileChooser.APPROVE_OPTION) {
@@ -258,15 +321,12 @@ public class SettingsDialog extends JDialog {
         JButton applyButton = new JButton("Zastosuj");
         applyButton.addActionListener(e -> {
             updateConfiguration();
-            gui.reloadConfiguration(appConfig);
-
         });
 
         JButton saveButton = new JButton("Zapisz");
         saveButton.addActionListener(e -> {
             updateConfiguration();
-            gui.reloadConfiguration(appConfig);
-            gui.saveConfiguration(appConfig);
+            gui.saveConfiguration(configManager.getConfig());
             dispose();
         });
 
@@ -285,52 +345,52 @@ public class SettingsDialog extends JDialog {
         JPanel leftPanel = new JPanel(new GridBagLayout());
         GridBagConstraints gbc = new GridBagConstraints();
 
-        CameraPanelComponents components = new CameraPanelComponents();
+        CameraPanelComponents cameraPanelComponents = new CameraPanelComponents();
 
         // ==== COMPONENTS
         // --- Description
         String description = cameraConfig != null? cameraConfig.getDisplayName() : "";
-        components.descriptionField = new JTextField(description, 30);
+        cameraPanelComponents.descriptionField = new JTextField(description, 30);
 
        // --- IP + port
         String ip = cameraConfig != null? cameraConfig.getIpAddress() : "";
         JTextField ipField =  new JTextField(ip, 15);
-        components.ipField = ipField;
+        cameraPanelComponents.ipField = ipField;
 
         String port = cameraConfig != null ? String.valueOf(cameraConfig.getPort()) : "";
         JTextField portField = new JTextField(port, 5);
-        components.portField = portField;
+        cameraPanelComponents.portField = portField;
 
-        components.ipField.addFocusListener(new FocusAdapter() {
+        cameraPanelComponents.ipField.addFocusListener(new FocusAdapter() {
             @Override
             public void focusLost(FocusEvent e) {
-                String ip = components.ipField.getText().trim();
+                String ip = cameraPanelComponents.ipField.getText().trim();
                 if (ip.isEmpty()) {
                     return;
                 }
 
                 if (!isValidIpAddress(ip)) {
-                    components.ipField.setBorder(BorderFactory.createLineBorder(Color.RED, 2));
+                    cameraPanelComponents.ipField.setBorder(BorderFactory.createLineBorder(Color.RED, 2));
                 } else {
-                    components.ipField.setBorder(components.portField.getBorder());
-                    if (components.portField.getText().isBlank()) {
-                        components.portField.setText("52381");
+                    cameraPanelComponents.ipField.setBorder(UIManager.getBorder("TextField.border"));
+                    if (cameraPanelComponents.portField.getText().isBlank()) {
+                        cameraPanelComponents.portField.setText("52381");
                     }
                 }
             }
         });
 
         // --- MIDI assignemtn
-        components.midiPanelCombo = new JComboBox<>(new String[]{"", "A", "B"});
-        components.midiPanelCombo.addActionListener(e -> {
-            String selected = (String) components.midiPanelCombo.getSelectedItem();
+        cameraPanelComponents.midiPanelCombo = new JComboBox<>(new String[]{"", "A", "B"});
+        cameraPanelComponents.midiPanelCombo.addActionListener(e -> {
+            String selected = (String) cameraPanelComponents.midiPanelCombo.getSelectedItem();
 
             if (selected == null || selected.isBlank()) {
                 return;
             }
 
             for (CameraPanelComponents other : cameraPanels.values()) {
-                if (other == components) {
+                if (other == cameraPanelComponents) {
                     continue;
                 }
 
@@ -342,29 +402,29 @@ public class SettingsDialog extends JDialog {
         });
 
         if (cameraConfig != null && cameraConfig.getAssignedMidiPanel() != null) {
-            components.midiPanelCombo.setSelectedItem(cameraConfig.getAssignedMidiPanel());
+            cameraPanelComponents.midiPanelCombo.setSelectedItem(cameraConfig.getAssignedMidiPanel());
         }
 
         // Konfiguracja + Browse
-        components.configField = new JTextField();
-        components.configField.setEditable(false);
+        cameraPanelComponents.configField = new JTextField();
+        cameraPanelComponents.configField.setEditable(false);
 
         if (cameraConfig != null ){
             PTZCamera camera = cameraManager.getCameras().get("CAM_" + panelId.name());
             if (camera != null  && camera.getModel() != null){
-                components.configField.setText(camera.getModel());
-                components.configPath = appConfig.getSystem().getCameras().stream()
+                cameraPanelComponents.configField.setText(camera.getModel());
+                cameraPanelComponents.configPath = configManager.getConfig().getSystem().getCameras().stream()
                         .filter(cam -> cam.getAssignedGuiPanel().equals(panelId.name()))
                         .findFirst()
                         .map(AppConfig.CameraConfig::getViscaDefinition)
                         .orElse(null);
             }
         }else {
-            components.configField.setText("");
+            cameraPanelComponents.configField.setText("");
         }
 
-        components.browseButton = new JButton("Wczytaj");
-        components.browseButton.addActionListener(e -> {
+        cameraPanelComponents.browseButton = new JButton("Wczytaj");
+        cameraPanelComponents.browseButton.addActionListener(e -> {
             JFileChooser chooser = new JFileChooser();
             File configDir = new File("config");
             if (!configDir.exists()) {
@@ -375,7 +435,7 @@ public class SettingsDialog extends JDialog {
 
             if (chooser.showOpenDialog(SettingsDialog.this) == JFileChooser.APPROVE_OPTION) {
                 File selectedFile = chooser.getSelectedFile();
-                components.configPath = selectedFile.getAbsolutePath();
+                cameraPanelComponents.configPath = selectedFile.getAbsolutePath();
                 try{
                     ObjectMapper viscaMapper = new ObjectMapper();
                     ViscaConfig config = viscaMapper.readValue (selectedFile, ViscaConfig.class);
@@ -385,8 +445,8 @@ public class SettingsDialog extends JDialog {
                     Path targetFile = configPath.resolve(selectedFile.getName());
                     Files.copy(selectedFile.toPath(), targetFile, StandardCopyOption.REPLACE_EXISTING);
 
-                    components.configPath = "config/" + selectedFile.getName();
-                    components.configField.setText(config.getCameraName()
+                    cameraPanelComponents.configPath = "config/" + selectedFile.getName();
+                    cameraPanelComponents.configField.setText(config.getCameraName()
                     );
                 }catch (Exception ex){
                     JOptionPane.showMessageDialog(
@@ -426,21 +486,21 @@ public class SettingsDialog extends JDialog {
                 online = cameraManager.refreshConnection(panelId);
             }else{
 
-                if(!isValidIpAddress(components.ipField.getText().trim())){
+                if(!isValidIpAddress(cameraPanelComponents.ipField.getText().trim())){
                     statusValue.setText("BŁAD IP");
                     statusValue.setForeground(errorColor);
                     return;
                 }
                 //DEBUG
-                if(components.configPath == null || components.configPath.isBlank()){
+                if(cameraPanelComponents.configPath == null || cameraPanelComponents.configPath.isBlank()){
                     statusValue.setText("BŁAD CFG");
                     statusValue.setForeground(errorColor);
                     return;
                 }
                 online = cameraManager.testConnection(
-                        components.ipField.getText().trim(),
-                        Integer.parseInt(components.portField.getText().trim()),
-                        components.configPath);
+                        cameraPanelComponents.ipField.getText().trim(),
+                        Integer.parseInt(cameraPanelComponents.portField.getText().trim()),
+                        cameraPanelComponents.configPath);
             }
 
             if (online){
@@ -468,7 +528,7 @@ public class SettingsDialog extends JDialog {
         gbc.gridx = 1;
         gbc.weightx = 1.0;
         gbc.gridwidth = 5;
-        leftPanel.add(components.descriptionField,gbc);
+        leftPanel.add(cameraPanelComponents.descriptionField,gbc);
 
         //--- IP + port
         gbc.gridy = 1;
@@ -494,7 +554,7 @@ public class SettingsDialog extends JDialog {
         gbc.gridx = 4;
         leftPanel.add(new JLabel("Panel MIDI:"), gbc);
         gbc.gridx = 5;
-        leftPanel.add(components.midiPanelCombo, gbc);
+        leftPanel.add(cameraPanelComponents.midiPanelCombo, gbc);
 
         //--- Config + browser
         gbc.gridy = 2;
@@ -504,12 +564,12 @@ public class SettingsDialog extends JDialog {
         gbc.gridx = 1;
         gbc.gridwidth = 4;
         gbc.weightx = 1.0;
-        leftPanel.add(components.configField, gbc);
+        leftPanel.add(cameraPanelComponents.configField, gbc);
 
         gbc.gridx = 5;
         gbc.gridwidth = 1;
         gbc.weightx = 0;
-        leftPanel.add(components.browseButton, gbc);
+        leftPanel.add(cameraPanelComponents.browseButton, gbc);
 
         //--- Status
 
@@ -530,167 +590,171 @@ public class SettingsDialog extends JDialog {
         cameraPanel.add(leftPanel, BorderLayout.CENTER);
         cameraPanel.add(rightPanel, BorderLayout.EAST);
 
-        components.rootPanel = cameraPanel;
-        components.statusLabel = statusValue;
-        components.testButton = testButton;
+        cameraPanelComponents.rootPanel = cameraPanel;
+        cameraPanelComponents.statusLabel = statusValue;
+        cameraPanelComponents.testButton = testButton;
 
-        return components;
+        return cameraPanelComponents;
     }
 
     //==============================
     //   BUTTONS HANDLERS
     //==============================
 
-    private void updateConfiguration() {
+    private AppConfig buildConfiguration(){
 
-        //=== MIDI
+        ObjectMapper mapper = new ObjectMapper();
+        AppConfig config = mapper.convertValue(configManager.getConfig(), AppConfig.class);
+
+        //SYSTEM TAB
+
+        Map<String, Object> transport = config.getSystem().getTransport();
+        transport.put("autoIp", systemPanelComponents.autoIpCheckBox.isSelected());
+        transport.put("localIp", systemPanelComponents.localIpField.getText().trim());
+        transport.put("localPort", Integer.parseInt(systemPanelComponents.localPortField.getText().trim()));
+        transport.put("socketTimeout", 150);
+
+        //CAMERAS TAB
+        config.getSystem().getCameras().clear();
+        for (Map.Entry<ControlCore.ControlPanelId, CameraPanelComponents> entry : cameraPanels.entrySet()) {
+            String camIp = entry.getValue().ipField.getText().trim();
+            if (camIp.isBlank()){
+                continue;
+            }
+            AppConfig.CameraConfig cameraConfig = new AppConfig.CameraConfig();
+            cameraConfig.setCameraId("CAM_" + entry.getKey().name());
+            cameraConfig.setDisplayName(entry.getValue().descriptionField.getText().trim());
+            cameraConfig.setIpAddress(entry.getValue().ipField.getText().trim());
+            cameraConfig.setPort(Integer.parseInt(entry.getValue().portField.getText().trim()));
+            cameraConfig.setAssignedGuiPanel(entry.getKey().name());
+            String midiPanel = (String) entry.getValue().midiPanelCombo.getSelectedItem();
+            cameraConfig.setAssignedMidiPanel(midiPanel== null || midiPanel.isBlank() ? null : midiPanel);
+            cameraConfig.setViscaDefinition(entry.getValue().configPath);
+
+            config.getSystem().getCameras().add(cameraConfig);
+        }
+
+        //MIDI TAB
         MidiDeviceInfo input = (MidiDeviceInfo) inputComboBox.getSelectedItem();
         if (input != null) {
-            appConfig.getSystem().getMidi().getInput().setDeviceName(input.getDeviceName());
-            appConfig.getSystem().getMidi().getInput().setDeviceIndex(input.getDeviceIndex());
+            config.getSystem().getMidi().getInput().setDeviceName(input.getDeviceName());
+            config.getSystem().getMidi().getInput().setDeviceIndex(input.getDeviceIndex());
         } else {
-            appConfig.getSystem().getMidi().getInput().setDeviceName(null);
-            appConfig.getSystem().getMidi().getInput().setDeviceIndex(-1);
+            config.getSystem().getMidi().getInput().setDeviceName(null);
+            config.getSystem().getMidi().getInput().setDeviceIndex(-1);
         }
 
         MidiDeviceInfo output = (MidiDeviceInfo) outputComboBox.getSelectedItem();
         if (output != null) {
-            appConfig.getSystem().getMidi().getOutput().setDeviceName(output.getDeviceName());
-            appConfig.getSystem().getMidi().getOutput().setDeviceIndex(output.getDeviceIndex());
+            config.getSystem().getMidi().getOutput().setDeviceName(output.getDeviceName());
+            config.getSystem().getMidi().getOutput().setDeviceIndex(output.getDeviceIndex());
         } else {
-            appConfig.getSystem().getMidi().getOutput().setDeviceName(null);
-            appConfig.getSystem().getMidi().getOutput().setDeviceIndex(-1);
+            config.getSystem().getMidi().getOutput().setDeviceName(null);
+            config.getSystem().getMidi().getOutput().setDeviceIndex(-1);
         }
 
         String configFile = midiMappingFileField.getText();
 
-        appConfig.getSystem().getMidi().getInput().setConfigFile(configFile);
-        appConfig.getSystem().getMidi().getOutput().setConfigFile(configFile);
+        config.getSystem().getMidi().getInput().setConfigFile(configFile);
+        config.getSystem().getMidi().getOutput().setConfigFile(configFile);
+
+        return config;
+
+    }
+
+    private void updateConfiguration() {
+
+        if (!validateConfigurationForm()){
+            return;
+        }
+
+        AppConfig config = buildConfiguration();
+        System.out.println("Config after form validation: " + config);
+
+        AppConfigManager.UpdateMode mode = gui.isFirstLaunch() ? AppConfigManager.UpdateMode.INITIAL_COMMIT : AppConfigManager.UpdateMode.COMMIT;
+
+        ConfigurationUpdateResults result = configManager.updateConfiguration(config, mode);
+
+        if (!result.getErrors().isEmpty()) {
+
+            JOptionPane.showMessageDialog(
+                    this,
+                    gui.formatErrors(result),
+                    "Błąd konfiguracji",
+                    JOptionPane.ERROR_MESSAGE
+            );
+            return;
+        }
+        gui.setFirstLaunch(false);
+        gui.reloadConfiguration();
+    }
+
+    private boolean validateConfigurationForm() {
+
+        boolean valid = true;
+
+        // ===== TRANSPORT
+        if (!systemPanelComponents.autoIpCheckBox.isSelected()) {
+
+            String ip = systemPanelComponents.localIpField.getText().trim();
+            systemPanelComponents.localIpField.setBorder(UIManager.getBorder("TextField.border"));
+
+            if (!isValidIpAddress(ip)) {
+                systemPanelComponents.localIpField.setBorder(BorderFactory.createLineBorder(Color.RED, 2));
+                valid = false;
+            }
+        }
+
+        try {
+            int port = Integer.parseInt(systemPanelComponents.localPortField.getText().trim());
+            if (port < 1 || port > 65535) {
+                systemPanelComponents.localPortField.setBorder(BorderFactory.createLineBorder(Color.RED, 2));
+                valid = false;
+            }
+
+        } catch (Exception e) {
+            valid = false;
+        }
+
+        // ===== MIDI
+        if (midiMappingFileField.getText().trim().isBlank()) {
+            midiMappingFileField.setBorder(BorderFactory.createLineBorder(Color.RED, 2));
+            valid = false;
+        }
 
         // ===== CAMERAS
-        appConfig.getSystem().getCameras().clear();
-        try {
-            for (Map.Entry<ControlCore.ControlPanelId, CameraPanelComponents> entry : cameraPanels.entrySet()) {
+        for (CameraPanelComponents panel : cameraPanels.values()) {
+            String ip = panel.ipField.getText().trim();
+            if (ip.isBlank()) {
+                continue;
+            }
 
-                ControlCore.ControlPanelId panelId = entry.getKey();
-                CameraPanelComponents panel = entry.getValue();
+            if (!isValidIpAddress(ip)) {
+                panel.ipField.setBorder(BorderFactory.createLineBorder(Color.RED, 2));
+                valid = false;
+            }
 
-                // Camera parameters validation
-                String ip = panel.ipField.getText().trim();
-                if (ip.isBlank()) {
-                    continue;
-                }
-                if (!isValidIpAddress(ip)) {
-                    throw new IllegalArgumentException("Nieprawidłowy adres IP dla kamery " + panelId);
-                }
+            if (panel.configPath == null || panel.configPath.isBlank()) {
+                panel.configField.setBorder(BorderFactory.createLineBorder(Color.RED, 2));
+                valid = false;
+            }
 
-                String configPath = panel.configPath;
-                if (configPath == null || configPath.isBlank()) {
-                    throw new IllegalArgumentException("Brak konfiguracji VISCA dla kamery " + panelId);
-                }
-
-                ObjectMapper viscaMapper = new ObjectMapper();
-                ViscaConfig config = null;
-                try {
-                    config = viscaMapper.readValue(new File(panel.configPath), ViscaConfig.class);
-                } catch (Exception e) {
-                    throw new IllegalArgumentException("Błąd wczytywania konfiguracji VISCA dla kamery " + panelId);
-                }
+            try {
 
                 int port = Integer.parseInt(panel.portField.getText().trim());
-                boolean online = cameraManager.testConnection(ip, port, configPath);
 
-                if (!online) {
-                    int result = JOptionPane.showConfirmDialog(this,
-                            "Nie udało się połączyć z kamerą " + panelId + ".\n" + "Czy mimo to zapisać konfigurację?",
-                            "Weryfikacja kamery",
-                            JOptionPane.YES_NO_OPTION,
-                            JOptionPane.WARNING_MESSAGE
-                    );
-
-                    if (result != JOptionPane.YES_OPTION) {
-                        continue;
-                    }
+                if (port < 1 || port > 65535) {
+                    panel.portField.setBorder(BorderFactory.createLineBorder(Color.RED,2));
+                    valid = false;
                 }
 
-                //--- UPDATING CAMERA CONFIGURATION
-                AppConfig.CameraConfig camera = new AppConfig.CameraConfig();
-                camera.setCameraId("CAM_" + panelId.name());
-                camera.setAssignedGuiPanel(panelId.name());
-                camera.setDisplayName(panel.descriptionField.getText().trim());
-                camera.setIpAddress(ip);
-                camera.setPort(port);
-                camera.setViscaDefinition(configPath);
-
-                String midiPanelValue = (String) panel.midiPanelCombo.getSelectedItem();
-
-                camera.setAssignedMidiPanel((midiPanelValue == null || midiPanelValue.isBlank()) ? null : midiPanelValue);
-                appConfig.getSystem().getCameras().add(camera);
+            } catch (Exception e) {
+                panel.portField.setBorder(BorderFactory.createLineBorder(Color.RED,2));
+                valid = false;
             }
-        }catch (Exception exc) {
-            JOptionPane.showMessageDialog(this,
-                    exc.getMessage(),
-                    "Bład konfiguracji.",
-                    JOptionPane.ERROR_MESSAGE);
         }
+        return valid;
     }
-
-                /*try {
-                    if (config != null) {
-                        cameraManager.addCamera(camera.getCameraId(),
-                                camera.getIpAddress(),
-                                camera.getPort(),
-                                cameraManager.getLocalPort(),
-                                socketTimeout,
-                                camera.getDisplayName(),
-                                config,
-                                panelId,
-                                midiPanel);
-                    }
-                } catch (Exception ex) {
-                    throw new IllegalArgumentException("Błąd dodawania kamery " + panelId);
-                }
-                existingCameras.remove(camera.getCameraId());
-            }
-
-            for (String cameraId : existingCameras) {
-                cameraManager.removeCamera(cameraId);
-            }
-        } catch (Exception exc) {
-            JOptionPane.showMessageDialog(this,
-                    exc.getMessage(),
-                    "Bład konfiguracji.",
-                    JOptionPane.ERROR_MESSAGE);
-        }
-
-
-        // SYSTEM ELEMENTS UPDATE
-        for (ControlCore.ControlPanelId panel : ControlCore.ControlPanelId.values()) {
-            midiControllerManager.getMidiController().updateCameraIndicators(panel);
-        }
-
-        configManager.notifyConfigurationChanged();
-        SwingUtilities.invokeLater(() -> {
-            gui.rebuildPanels();
-            gui.refreshStatusInfo();
-        });
-        System.out.println("Configuration applied.");*/
-
-    private void saveConfiguration() {
-
-        /*updateConfiguration();
-        try {
-            configManager.save(appConfig);
-            configManager.notifyConfigurationChanged();
-            dispose();
-            //JOptionPane.showMessageDialog(this, "Konfiguracja zapisana.","Ustawienia",JOptionPane.INFORMATION_MESSAGE);
-
-        } catch (Exception ex) {
-            JOptionPane.showMessageDialog(this,"Błąd zapisu konfiguracji:\n"+ ex.getMessage(),"Błąd",JOptionPane.ERROR_MESSAGE);
-        }*/
-
-    }
-
 
     //===============================
     //       HELPERS, RENDERS
@@ -702,6 +766,12 @@ public class SettingsDialog extends JDialog {
 
             CameraPanelComponents panel = cameraPanels.get(panelId);
 
+            PTZCamera camera = cameraManager.getCoreAssignedCamera(panelId);
+            if (camera == null){
+                panel.statusLabel.setText("------");
+                panel.statusLabel.setForeground(Color.GRAY);
+                continue;
+            }
             boolean online = cameraManager.isCameraOnline(panelId);
 
             if (online) {
@@ -740,18 +810,6 @@ public class SettingsDialog extends JDialog {
         }
     }
 
-    private String importConfigurationFile(
-            String sourcePath)
-            throws IOException {
-
-        Path source = Paths.get(sourcePath);
-
-        Path target = Paths.get("config", source.getFileName().toString());
-
-        Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
-
-        return target.toString();
-    }
 
     //==============================
     //      PRIVATE CLASSES
@@ -777,5 +835,14 @@ public class SettingsDialog extends JDialog {
 
         ControlCore.ControlPanelId panelId;
     }
+
+    @Data
+    private static class GeneralPanelComponents{
+        JCheckBox autoIpCheckBox;
+        JTextField localIpField;
+        JTextField localPortField;
+    }
+
+
 
 }

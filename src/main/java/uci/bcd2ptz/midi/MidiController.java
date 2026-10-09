@@ -1,12 +1,11 @@
 package uci.bcd2ptz.midi;
 
 import lombok.Getter;
-import uci.bcd2ptz.AppConfig;
-import uci.bcd2ptz.AppConfigManager;
+import uci.bcd2ptz.config.AppConfig;
+import uci.bcd2ptz.config.AppConfigManager;
 import uci.bcd2ptz.core.ControlCore;
 import uci.bcd2ptz.core.ControlEvent;
 import uci.bcd2ptz.core.ControlEventBus;
-import uci.bcd2ptz.ptz.PTZCameraManager;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -19,11 +18,11 @@ import java.util.logging.Logger;
 import static uci.bcd2ptz.core.ControlEvent.EventSource.MIDI;
 
 @Getter
-public class MidiController implements AppConfigManager.ConfigurationListener {
+public class MidiController {
 
     private static final Logger LOGGER = Logger.getLogger(MidiController.class.getName());
-    private final MidiInputController midiInputController;
-    private final MidiOutputController midiOutputController;
+    private MidiInputController midiInputController;
+    private MidiOutputController midiOutputController;
     private final MidiConfig config;
     private ControlEventBus outputBus;
     private ControlCore.RunMode mode;
@@ -59,11 +58,9 @@ public class MidiController implements AppConfigManager.ConfigurationListener {
             int outputDeviceIndex,
             ControlEventBus outputBus,
             ControlCore.RunMode mode,
-            MidiControllerManager controllerManager) {
+            MidiControllerManager controllerManager) throws Exception {
 
         this.mode = mode;
-        this.midiInputController = new MidiInputController(inputDeviceIndex);
-        this.midiOutputController = new MidiOutputController(outputDeviceIndex, config.isHardwareBlinking());
         this.config = config;
         this.outputBus = outputBus;
         this.controllerManager = controllerManager;
@@ -75,12 +72,28 @@ public class MidiController implements AppConfigManager.ConfigurationListener {
             MidiBindingDefinition binding = entry.getValue();
             outputBindings.put(binding.getPanel() + ":" + binding.getAction(), entry.getKey());
         }
+        this.midiInputController = null;
+        this.midiOutputController = null;
+
+        try {
+            this.midiInputController = new MidiInputController(inputDeviceIndex, mode);
+            this.midiOutputController = new MidiOutputController(outputDeviceIndex, config.isHardwareBlinking(), mode);
+        }catch (Exception e){
+            if(midiInputController != null){
+                midiInputController.close();
+            }
+            if(midiOutputController != null){
+                midiOutputController.close();
+            }
+        }
+
+        if (mode.equals(ControlCore.RunMode.FULL)){
+            start();
+        }
     }
 
     public synchronized void start() {
 
-        //DEBUG
-        //System.out.println("MODE: " + mode.toString());
         if (mode == ControlCore.RunMode.NO_HARDWARE) {
             return;
         }
@@ -94,7 +107,7 @@ public class MidiController implements AppConfigManager.ConfigurationListener {
         /*
          * Uruchomienie kontrolera wejścia MIDI
          */
-        inputThread = new Thread(midiInputController, "MIDI-INPUT" );
+        //inputThread = new Thread(midiInputController, "MIDI-INPUT" );
 
         for (MidiControlDefinition control : config.getControls().values()) {
 
@@ -105,8 +118,8 @@ public class MidiController implements AppConfigManager.ConfigurationListener {
             );
         }
 
-        inputThread.setDaemon(true);
-        inputThread.start();
+        /*inputThread.setDaemon(true);
+        inputThread.start();*/
 
         /*
          * Translacja MIDI -> ControlEvent
@@ -323,16 +336,15 @@ public class MidiController implements AppConfigManager.ConfigurationListener {
     private void translateOutput(MidiControlDefinition control, ControlEvent event) {
 
         //DEBUG
-        System.out.println("translate output from panel " + event.getPanel() + " ==> " + event + "  |  " + control.toString());
+       /* System.out.println("translate output from panel " + event.getPanel() + " ==> " + event.getAction());// + "  |  " + control.toString());
+        System.out.println("getMidiBinding("+ event.getPanel() + ")="  + controllerManager.getMidiBinding(event.getPanel()));*/
 
         ControlCore.ControlPanelId outputPanel = event.getPanel();
 
         if (event.getAction().startsWith("CAM_SELECT_")
                 && event.getAction().endsWith("_INDICATOR")) {
 
-            ControlCore.ControlPanelId corePanel = event.getPanel();
-
-            ControlCore.ControlPanelId midiPanel = controllerManager.getMidiBinding(corePanel);
+            ControlCore.ControlPanelId midiPanel = event.getPanel();
 
             // kamera nie jest przypisana do żadnego panelu MIDI
             if (midiPanel == null) {
@@ -347,7 +359,7 @@ public class MidiController implements AppConfigManager.ConfigurationListener {
             outputPanel = camLedAssignment;
         }
 
-        System.out.println("LEDS bindend to panel: " + camLedAssignment + "   |  event panel: " + event.getPanel() + "  | MIDI panel:" + outputPanel);
+        //System.out.println("LEDS bindend to panel: " + camLedAssignment + "   |  event panel: " + event.getPanel() + "  | MIDI panel:" + outputPanel);
 
         String controlName = outputBindings.get(outputPanel + ":" + event.getAction());
 
@@ -682,32 +694,5 @@ public class MidiController implements AppConfigManager.ConfigurationListener {
     //    CONFIGURATION UPDATING
     //===============================
 
-    @Override
-    public void configurationChanged(AppConfig config) {
-
-        reloadMidiConfiguration(config);
-    }
-
-    private void reloadMidiConfiguration(
-            AppConfig config) {
-
-        System.out.println(
-                "Reload MIDI configuration:"
-        );
-
-        System.out.println(
-                "IN : " + config.getSystem()
-                    .getMidi()
-                    .getInput()
-                    .getDeviceName()
-        );
-
-        System.out.println(
-                "OUT: " + config.getSystem()
-                        .getMidi()
-                        .getOutput()
-                        .getDeviceName()
-        );
-    }
 
 }

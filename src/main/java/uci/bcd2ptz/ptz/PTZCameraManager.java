@@ -1,18 +1,23 @@
 package uci.bcd2ptz.ptz;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.Setter;
+import uci.bcd2ptz.config.AppConfig;
+import uci.bcd2ptz.config.AppConfigManager;
+import uci.bcd2ptz.config.ConfigurationUpdateResults;
 import uci.bcd2ptz.core.ControlCore.*;
 import uci.bcd2ptz.core.ControlEvent;
 import uci.bcd2ptz.core.ControlEventBus;
 import uci.bcd2ptz.visca.ViscaConfig;
 import uci.bcd2ptz.visca.ViscaPTZController;
 
+import java.io.File;
 import java.io.IOException;
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
+import java.net.*;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 
@@ -24,72 +29,33 @@ public class PTZCameraManager {
     private final Map<String, PTZCamera> cameras = new ConcurrentHashMap<>();
     private final Map<ControlPanelId, PTZCamera> guiPanelAssignments = new ConcurrentHashMap<>();
     private final Map<ControlPanelId, PTZCamera> midiPanelAssignments = new ConcurrentHashMap<>();
+    @Setter
+    private AppConfigManager appConfigManager;
+    private volatile boolean firstLanuch;
 
     //UDP communication
     private final Map <String, PendingPacket> pendingPackets = new ConcurrentHashMap<>();
     private Thread receiverThread;
     private DatagramSocket socket = null;
-    private String localIP;
+    private String localIp;
     private int localPort;
     private boolean running = true;
+    private boolean initialized;
 
     private static final Logger LOGGER = Logger.getLogger(PTZCameraManager.class.getName());
     private ControlEventBus inputBus;
 
-    public PTZCameraManager(String localIP, int localPort, ControlEventBus eventBus)  {
+    public PTZCameraManager(ControlEventBus eventBus, AppConfigManager appConfigManager)  {
 
         this.inputBus = eventBus;
-        this.localIP = localIP;
-        this.localPort = localPort;
-
-        try {
-            this.socket = new DatagramSocket(null);
-            socket.setReuseAddress(true);
-            socket.bind (new InetSocketAddress(
-                    InetAddress.getByName(localIP),
-                    localPort
-            ));
-        }catch (Exception e){
-            System.err.println("Unable to establish socket for IP " + localIP + ":" + localPort);
-        }
-
-        this.receiverThread =
-                new Thread(() -> {
-                    while (running) {
-
-                        DatagramPacket packet = new DatagramPacket(new byte[1024], 1024);
-                        try {
-                            socket.receive(packet);
-
-                            String senderKey = packet.getAddress().getHostAddress() + ":" + packet.getPort();
-
-                            PendingPacket pending = pendingPackets.get(senderKey);
-
-                            if (pending != null) {
-                                pending.getResponses().put(Arrays.copyOf(
-                                                packet.getData(),
-                                                packet.getLength()));
-                                pending.markResponseReceived();
-                                pendingPackets.remove(senderKey);
-                            }
-                        }catch (IOException e){
-                            LOGGER.warning("Communication error for camera on " + packet.getAddress() +":" + packet.getPort());
-                        }catch (Exception e){
-                            LOGGER.warning("Packet error for camera " + packet.getAddress() +":" + packet.getPort());
-                        }
-
-                    }
-
-                }, "VISCA_RX");
-
-        this.receiverThread.setDaemon(true);
-        this.receiverThread.start();
+        this.appConfigManager = appConfigManager;
     }
+
+
 
     /* ==================================
                  UDP TRAFFIC
        ==================================*/
-
     public PendingPacket sendPacket(PTZCamera camera, byte[] udpPacket) throws IOException, InterruptedException {
 
         synchronized (camera.getTransactionLock()) {
@@ -117,23 +83,17 @@ public class PTZCameraManager {
         }
     }
 
+    public int getLocalPort(){
+        return this.localPort;
+    }
+
+    public String getLocalIp(){
+        return this.localIp;
+    }
 
     /* ==================================
               CAMERA MANAGEMENT
        ==================================*/
-
-    public PTZCamera getCamera(String cameraId) {
-
-        PTZCamera camera = cameras.get(cameraId);
-
-        if (camera == null) {
-            throw new IllegalArgumentException(
-                    "Nie znaleziono kamery: "
-                            + cameraId
-            );
-        }
-        return camera;
-    }
 
     public PTZCamera addCamera(String cameraId, String ipAddress, int cameraPort, int localPort, int socketTimeout, String displayName, ViscaConfig config,
                                ControlPanelId assignedCorePanel, ControlPanelId assignedMidiPanel) throws Exception {
@@ -154,6 +114,24 @@ public class PTZCameraManager {
         //DEBUG:
         /*System.out.println("CAM=" + cameraId + " GUI=" + assignedGuiPanel + " MIDI=" + assignedMidiPanel);*/
 
+       /* System.out.println("ADD CAMERA "
+                + cameraId
+                + " HASH="
+                + System.identityHashCode(camera)
+        );*/
+        return camera;
+    }
+
+    public PTZCamera getCamera(String cameraId) {
+
+        PTZCamera camera = cameras.get(cameraId);
+
+        if (camera == null) {
+            throw new IllegalArgumentException(
+                    "Nie znaleziono kamery: "
+                            + cameraId
+            );
+        }
         return camera;
     }
 
@@ -176,9 +154,69 @@ public class PTZCameraManager {
             LOGGER.warning("Unable to stop camera: " + cameraId);
         }
 
-        pendingPackets.remove(camera.getCameraId() + ":" + camera.getCameraPort());
+        pendingPackets.remove(camera.getIpAddress() + ":" + camera.getCameraPort());
         guiPanelAssignments.values().removeIf(c -> c == camera);
         midiPanelAssignments.values().removeIf(c -> c == camera);
+    }
+
+    public ConfigurationUpdateResults reconfigureCameras() {
+
+        if (!initialized){
+            initialize();
+        }
+
+        Set<String> existingCameras = new HashSet<>(cameras.keySet());
+        ConfigurationUpdateResults results = new ConfigurationUpdateResults();
+
+        guiPanelAssignments.clear();
+        midiPanelAssignments.clear();
+
+        ObjectMapper viscaMapper = new ObjectMapper();
+
+        for (AppConfig.CameraConfig cameraConfig : appConfigManager.getConfig().getSystem().getCameras()) {
+
+            try {
+                ControlPanelId corePanel = ControlPanelId.valueOf(cameraConfig.getAssignedGuiPanel());
+
+                ControlPanelId midiPanel = null;
+                if (cameraConfig.getAssignedMidiPanel() != null && !cameraConfig.getAssignedMidiPanel().isBlank()) {
+                    midiPanel = ControlPanelId.valueOf(cameraConfig.getAssignedMidiPanel());
+                }
+
+                ViscaConfig viscaConfig = viscaMapper.readValue(new File(cameraConfig.getViscaDefinition()),ViscaConfig.class);
+
+                addCamera(
+                        cameraConfig.getCameraId(),
+                        cameraConfig.getIpAddress(),
+                        cameraConfig.getPort(),
+                        localPort,
+                        (int) appConfigManager.getConfig().getSystem().getTransport().getOrDefault("socketTimeout", 200),
+                        cameraConfig.getDisplayName(),
+                        viscaConfig,
+                        corePanel,
+                        midiPanel
+                );
+
+                existingCameras.remove(cameraConfig.getCameraId()
+                );
+
+            } catch (Exception e) {
+                results.addError(AppConfigManager.ConfigurationSection.CAMERA, "Unable to reconfigure camera: " + cameraConfig.getCameraId()
+                        + "\n ERROR: " + e.getMessage());
+
+                LOGGER.warning("Unable to configure camera " + cameraConfig.getCameraId() + ": " + e.getMessage()
+                );
+            }
+        }
+
+        for (String cameraId : existingCameras) {
+            removeCamera(cameraId);
+        }
+
+        LOGGER.info("Camera configuration reloaded.");
+        //DEBUG
+        System.out.println("MIDI ASSIGNMENTS = " + midiPanelAssignments);
+        return results;
     }
 
     public PTZCamera getCoreAssignedCamera(ControlPanelId panel) {
@@ -247,7 +285,7 @@ public class PTZCameraManager {
         return cameras;
     }
 
-    public String getCoreAssignements(){
+    public String getCoreAssignments(){
         return guiPanelAssignments.toString();
     }
 
@@ -334,6 +372,159 @@ public class PTZCameraManager {
         }
     }
 
+
+    // =====================================
+    //     CONFIGURATION MANAGEMENT
+    //=====================================
+    public void initialize(){
+
+        if (initialized) {
+            return;
+        }
+
+        //DEBUG
+        System.out.println(
+                "RECONFIGURE FROM "
+                        + Thread.currentThread().getStackTrace()[2]
+        );
+
+        AppConfig appConfig = appConfigManager.getConfig();
+        ConfigurationUpdateResults results = null;
+
+        String localIp = (String)appConfig.getSystem().getTransport().get("localIp");
+        int localPort = (Integer)appConfig.getSystem().getTransport().get("localPort");
+
+        try {
+            DatagramSocket socket = new DatagramSocket(null);
+            socket.setReuseAddress(true);
+            socket.bind(new InetSocketAddress(localIp, localPort));
+            results = updateTransportSocket(socket);
+        }catch (Exception e){
+            LOGGER.severe("Socket error: " + e.getMessage());
+        }
+
+        this.localIp = localIp;
+        this.localPort = localPort;
+
+        if (!results.getErrors().isEmpty()){
+            LOGGER.severe("Socket create error: " + results.getErrors());
+        }
+
+        this.receiverThread = new Thread(() -> {
+                    while (running) {
+
+                        DatagramPacket packet = new DatagramPacket(new byte[1024], 1024);
+                        try {
+                            socket.receive(packet);
+
+                            String senderKey = packet.getAddress().getHostAddress() + ":" + packet.getPort();
+
+                            PendingPacket pending = pendingPackets.get(senderKey);
+
+                            if (pending != null) {
+                                pending.getResponses().put(Arrays.copyOf(
+                                        packet.getData(),
+                                        packet.getLength()));
+                                pending.markResponseReceived();
+                                pendingPackets.remove(senderKey);
+                            }
+                        }catch (SocketException e){
+                            if (!running){
+                                break;
+                            }
+                        }
+                        catch (IOException e){
+                            LOGGER.warning("Communication error for camera on " + packet.getAddress() +":" + packet.getPort());
+                        }catch (Exception e){
+
+                            //DEBUG
+                                e.printStackTrace();
+
+                                LOGGER.warning(
+                                        "Packet error for camera "
+                                                + packet.getAddress()
+                                                + ":"
+                                                + packet.getPort()
+                                                + " -> "
+                                                + e.getMessage()
+                                );
+
+                            LOGGER.warning("Packet error for camera " + packet.getAddress() +":" + packet.getPort());
+                        }
+                    }
+                }, "VISCA_RX");
+
+        this.receiverThread.setDaemon(true);
+        this.receiverThread.start();
+
+        initialized = true;
+
+        results = reconfigureCameras();
+
+        if (!results.getErrors().isEmpty()) {
+            LOGGER.warning("CAMERA configuration errors: " + results.getErrors());
+        }
+    }
+
+    public static DatagramSocket validateTransport(AppConfig config) throws Exception {
+
+        String localIp = String.valueOf(config.getSystem().getTransport().get("localIp"));
+        int localPort = (Integer) config.getSystem().getTransport().get("localPort");
+
+        DatagramSocket socket = new DatagramSocket(null);
+        socket.setReuseAddress(true);
+        socket.bind(new InetSocketAddress(InetAddress.getByName(localIp),localPort));
+
+        return socket;
+    }
+
+    public ConfigurationUpdateResults updateTransportSocket(DatagramSocket newSocket) {
+
+        ConfigurationUpdateResults results = new ConfigurationUpdateResults();
+
+        try {
+            if (newSocket == null) {
+                throw new IllegalArgumentException("New socket is null.");
+            }
+
+            DatagramSocket oldSocket = this.socket;
+
+            this.socket = newSocket;
+
+            if (oldSocket != null && !oldSocket.isClosed()) {
+                oldSocket.close();
+            }
+
+        } catch (Exception e) {
+            results.getErrors().put(
+                    AppConfigManager.ConfigurationSection.TRANSPORT,
+                    e.getMessage()
+            );
+        }
+
+        return results;
+    }
+
+    private void shutdownTransport() {
+
+        this.running = false;
+
+        if (this.socket != null && !this.socket.isClosed()) {
+            this.socket.close();
+        }
+
+        if (this.receiverThread != null) {
+
+            try {
+                this.receiverThread.join(1000);
+            } catch (InterruptedException ignored) {
+            }
+
+            this.receiverThread = null;
+        }
+        initialized = false;
+    }
+
     public void shutdown(){
         running = false;
         for (PTZCamera camera : cameras.values()){
@@ -343,16 +534,8 @@ public class PTZCameraManager {
                 LOGGER.warning("Unable to stop camera: " + camera.getCameraId());
             }
         }
-        socket.close();
+        shutdownTransport();
         receiverThread.interrupt();
-    }
-
-    public int getLocalPort(){
-        return this.localPort;
-    }
-
-    public String getLocalIp(){
-        return this.localIP;
     }
 
 }

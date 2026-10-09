@@ -1,44 +1,36 @@
 package uci.bcd2ptz.midi;
 
+import lombok.Getter;
+import lombok.Setter;
+import uci.bcd2ptz.core.ControlCore;
+import uci.bcd2ptz.core.ControlCore.RunMode.*;
+
 import javax.sound.midi.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
-public class MidiInputController
-        implements Receiver, Runnable {
+public class MidiInputController implements Receiver {
 
     private final int deviceIndex;
-
     private MidiDevice device;
+    @Getter
+    private final BlockingQueue<MidiEvent> eventQueue = new LinkedBlockingQueue<>();
+    @Getter @Setter
+    private boolean running = false;
 
-    private final BlockingQueue<MidiEvent> eventQueue =
-            new LinkedBlockingQueue<>();
-
-    public MidiInputController(int deviceIndex) {
+    public MidiInputController(int deviceIndex, ControlCore.RunMode mode) throws Exception {
 
         this.deviceIndex = deviceIndex;
-    }
 
+        MidiDevice.Info[] devices = MidiSystem.getMidiDeviceInfo();
+        this.device = MidiSystem.getMidiDevice(devices[deviceIndex]);
+        device.open();
+        Transmitter transmitter = device.getTransmitter();
 
-    @Override
-    public void run() {
-
-        try {
-
-            MidiDevice.Info[] devices = MidiSystem.getMidiDeviceInfo();
-
-            device = MidiSystem.getMidiDevice(devices[deviceIndex]);
-            device.open();
-            Transmitter transmitter = device.getTransmitter();
+        if (mode == ControlCore.RunMode.FULL) {
             transmitter.setReceiver(this);
-
-            //DEBUG:
-            //System.out.println("MIDI IN ready: " + devices[deviceIndex].getName());
-
-        }catch (Exception e) {
-
-            e.printStackTrace();
         }
+
     }
 
     @Override
@@ -108,8 +100,4 @@ public class MidiInputController
         }
     }
 
-    public BlockingQueue<MidiEvent>  getEventQueue() {
-
-        return eventQueue;
-    }
 }

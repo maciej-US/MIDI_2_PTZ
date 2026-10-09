@@ -73,13 +73,13 @@ public class PTZCamera {
         this.cameraManager = cameraManager;
 
         //SCAFF
-        InetAddress localAddress = InetAddress.getByName("100.75.75.78");
+        InetAddress localAddress = InetAddress.getByName(cameraManager.getLocalIp());
         this.socket.bind(new InetSocketAddress(localAddress, 52381));
 
         //Debug
-        System.out.println("CAMERA " + cameraId + " IP " + ipAddress + " PORT " + localPort +
+        /*System.out.println("CAMERA " + cameraId + " IP " + ipAddress + " PORT " + localPort +
                 "\nCONSOLE IP " + socket.getLocalAddress() + " PORT " + socket.getLocalPort() + "\n");
-
+*/
 
         //this.socket.bind(new InetSocketAddress(localPort));
         this.socket.connect(this.address, this.cameraPort);

@@ -1,6 +1,7 @@
 package uci.bcd2ptz.gui;
 
-import uci.bcd2ptz.AppConfig;
+import uci.bcd2ptz.config.AppConfig;
+import uci.bcd2ptz.config.AppConfigManager;
 import uci.bcd2ptz.core.*;
 import uci.bcd2ptz.midi.MidiControllerManager;
 import uci.bcd2ptz.ptz.PTZCamera;
@@ -15,10 +16,7 @@ import static uci.bcd2ptz.core.ControlEvent.EventSource.SYSTEM;
 import static uci.bcd2ptz.gui.ButtonLED.*;
 
 
-public class GUIPanel
-        extends JPanel
-        implements ControlEventListener{
-
+public class GUIPanel extends JPanel implements ControlEventListener{
 
     // ==================== GUI ELEMENTS ====================
 
@@ -71,14 +69,16 @@ public class GUIPanel
     private final MidiControllerManager midiManager;
     ControlCore.ControlPanelId panelId;
     private volatile boolean initialized = false;
-    private final AppConfig appConfig;
+    private final AppConfigManager appConfigManager;
     private final MainGUI parentGUI;
+
+    private boolean lastOnline = true;
 
 
     //============ CONSTRUCTOR ===================
 
     public GUIPanel(ControlCore.ControlPanelId panelId, ControlEventBus outputBus, MainGUI parentGUI,
-                    PTZCameraManager cameraManger, MidiControllerManager midiManager, AppConfig appConfig) {
+                    PTZCameraManager cameraManger, MidiControllerManager midiManager, AppConfigManager appConfigManager) {
 
         super (new GridBagLayout());
 
@@ -89,7 +89,7 @@ public class GUIPanel
         this.midiManager = midiManager;
         this.panelId = panelId;
         this.outputBus = outputBus;
-        this.appConfig = appConfig;
+        this.appConfigManager = appConfigManager;
 
         initialize();
     }
@@ -467,7 +467,7 @@ public class GUIPanel
         JLabel midiLabel = new JLabel("CONSOLE");
         midiLabel.setForeground(labelColor);
 
-        midiPanelInfo = new Dseg14Display(appConfig.getSystem().getGuiConstraints().getLcdFontPath());
+        midiPanelInfo = new Dseg14Display(appConfigManager.getConfig().getSystem().getGuiConstraints().getLcdFontPath());
         ControlCore.ControlPanelId midiBinding = midiManager.getMidiBinding(panelId);
         midiPanelInfo.setValue(midiBinding != null? midiBinding.toString() : null);
 
@@ -861,7 +861,7 @@ public class GUIPanel
 
         //DEBUG
         //System.out.println("GUI Panel " + panelId + " Initialized");
-
+        synchronizeIndicators();
         initialized = true;
     }
 
@@ -1056,6 +1056,7 @@ public class GUIPanel
             case 0:
                 focusModeButton.setMode(LedMode.OFF);
                 focusKnob.setEnabled(true);
+                focusKnob.setActive(true);
                 focusOnePushButton.setEnabled(true);
                 focusOnePushButton.setMode(LedMode.BLINK);
                 focusMoveUpButton.setEnabled(true);
@@ -1065,6 +1066,7 @@ public class GUIPanel
             case 1:
                 focusModeButton.setMode(LedMode.ON);
                 focusKnob.setEnabled(false);
+                focusKnob.setActive(false);
                 focusOnePushButton.setEnabled(false);
                 focusOnePushButton.setMode(LedMode.OFF);
                 focusMoveUpButton.setEnabled(false);
@@ -1130,12 +1132,21 @@ public class GUIPanel
             statusInfo.setForeground(okColor);
             reconnectButton.setMode(LedMode.OFF);
             reconnectButton.setEnabled(false);
+            setPanelEnabled(true);
+            if (!lastOnline){
+                requestStateRefresh();
+            }
+
         } else {
             statusInfo.setText("OFFLINE");
             statusInfo.setForeground(errorColor);
             reconnectButton.setMode(LedMode.BLINK);
             reconnectButton.setEnabled(true);
+            setPanelEnabled(false);
+
         }
+
+        lastOnline = online;
 
         //DEBUG
         /*System.out.println("Refresh panel " + panelId + " CAM STATUS ONLINE: " + cameraManager.isCameraOnline(panelId)
@@ -1159,6 +1170,77 @@ public class GUIPanel
         }
         cameraManager.refreshConnection(panelId);
 
+    }
+
+    private void setPanelEnabled(boolean enabled) {
+
+        PTZModeButton.setEnabled(enabled);
+        autoFollowModeButton.setEnabled(enabled);
+        tiltSlider.setEnabled(enabled);
+        zoomSlider.setEnabled(enabled);
+
+        exposureModeButton.setEnabled(enabled);
+        exposureCompensationKnob.setEnabled(enabled);
+        irisKnob.setEnabled(enabled);
+        shutterKnob.setEnabled(enabled);
+
+        whiteBalanceMode.setEnabled(enabled);
+        whiteBalanceRGainKnob.setEnabled(enabled);
+        whiteBalanceBGainKnob.setEnabled(enabled);
+
+        focusKnob.setEnabled(enabled);
+        focusModeButton.setEnabled(enabled);
+        focusOnePushButton.setEnabled(enabled);
+        onePushWB.setEnabled(enabled);
+        focusMoveUpButton.setEnabled(enabled);
+        focusMoveDownButton.setEnabled(enabled);
+
+
+        if (!enabled) {
+            PTZModeButton.setMode(LedMode.OFF);
+            autoFollowModeButton.setMode(LedMode.OFF);
+
+            focusModeButton.setMode(LedMode.OFF);
+            focusKnob.setActive(false);
+
+            exposureModeButton.setMode(LedMode.OFF);
+            exposureCompensationKnob.setActive(false);
+            irisKnob.setActive(false);
+            shutterKnob.setActive(false);
+
+            whiteBalanceMode.setActive(false);
+            whiteBalanceRGainKnob.setActive(false);
+            whiteBalanceBGainKnob.setActive(false);
+            onePushWB.setMode(LedMode.OFF);
+        }
+    }
+
+    private void requestStateRefresh() {
+
+        outputBus.publish(
+                new ControlEvent(
+                        ControlEvent.EventSource.GUI,
+                        panelId,
+                        "STATUS_REQUEST",
+                        0
+                )
+        );
+    }
+
+    private void synchronizeIndicators(){
+
+        PTZCamera camera = cameraManager.getCoreAssignedCamera(panelId);
+
+        if (camera == null) {
+            return;
+        }
+        boolean wbManual = "MANUAL".equalsIgnoreCase(camera.getParameter("whiteBalanceMode").getCurrentState());
+
+        whiteBalanceRGainKnob.setActive(wbManual);
+        whiteBalanceBGainKnob.setActive(wbManual);
+
+        boolean focusManual = "MANUAL".equalsIgnoreCase(camera.getParameter("focusPosition").getCurrentState());
+        focusKnob.setActive(focusManual);
     }
 
 

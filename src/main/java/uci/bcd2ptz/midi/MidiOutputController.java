@@ -1,5 +1,7 @@
 package uci.bcd2ptz.midi;
 
+import uci.bcd2ptz.core.ControlCore;
+
 import javax.sound.midi.*;
 import javax.swing.Timer;
 import java.util.Map;
@@ -23,26 +25,19 @@ public class MidiOutputController  {
      * @param deviceIndex
      * @param hardwareBlinking
      */
-    public MidiOutputController( int deviceIndex, boolean hardwareBlinking) {
+    public MidiOutputController(int deviceIndex, boolean hardwareBlinking, ControlCore.RunMode mode) throws Exception {
 
         this.hardwareBlinking = hardwareBlinking;
 
-        try {
-            MidiDevice.Info[] devices = MidiSystem.getMidiDeviceInfo();
-            this.device = MidiSystem.getMidiDevice(devices[deviceIndex]);
-            this.device.open();
-            receiver = device.getReceiver();
+        MidiDevice.Info[] devices = MidiSystem.getMidiDeviceInfo();
+        this.device = MidiSystem.getMidiDevice(devices[deviceIndex]);
+        this.device.open();
+        receiver = device.getReceiver();
 
-            System.out.println("MIDI OUT ready: " + devices[deviceIndex].getName());
+        System.out.println("MIDI OUT ready: " + devices[deviceIndex].getName());
 
-            if (!hardwareBlinking) {
-                initBlinkEngine();
-            }
-
-        } catch (Exception e) {
-
-            System.err.println("MIDI OUT initialization error");
-            e.printStackTrace();
+        if (!hardwareBlinking && !mode.equals(ControlCore.RunMode.FULL)) {
+            initBlinkEngine();
         }
     }
 

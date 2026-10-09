@@ -4,44 +4,47 @@
       "input" : {
         "deviceName" : "BCD3000",
         "deviceIndex" : 4,
-        "configFile" : "C:\\GIT\\BCD2PTZ\\BCD2PTZ\\src\\main\\resources\\BCD3000.json"
+        "configFile" : "config/BCD3000.json"
       },
       "output" : {
         "deviceName" : "BCD3000",
         "deviceIndex" : 5,
-        "configFile" : "C:\\GIT\\BCD2PTZ\\BCD2PTZ\\src\\main\\resources\\BCD3000.json"
+        "configFile" : "config/BCD3000.json"
       }
     },
     "cameras" : [ {
-      "cameraId" : "CAM_C",
-      "displayName" : "Dummy 2",
-      "ipAddress" : "100.75.75.102",
+      "cameraId" : "CAM_A",
+      "displayName" : "Kamera A",
+      "ipAddress" : "100.75.75.100",
       "port" : 52381,
-      "viscaDefinition" : "C:\\GIT\\BCD2PTZ\\BCD2PTZ\\AVER_PTZ310.json",
-      "assignedGuiPanel" : "C",
-      "assignedMidiPanel" : null
+      "viscaDefinition" : "config/AVER_PTZ310.json",
+      "assignedGuiPanel" : "A",
+      "assignedMidiPanel" : "A"
     }, {
       "cameraId" : "CAM_B",
       "displayName" : "Dummy 1",
       "ipAddress" : "100.75.75.101",
       "port" : 52381,
-      "viscaDefinition" : "C:\\GIT\\BCD2PTZ\\BCD2PTZ\\AVER_PTZ310.json",
+      "viscaDefinition" : "config/AVER_PTZ310.json",
       "assignedGuiPanel" : "B",
-      "assignedMidiPanel" : "B"
+      "assignedMidiPanel" : null
     }, {
-      "cameraId" : "CAM_A",
-      "displayName" : "Kamera A",
-      "ipAddress" : "100.75.75.100",
+      "cameraId" : "CAM_C",
+      "displayName" : "Dummy 2",
+      "ipAddress" : "100.75.75.102",
       "port" : 52381,
-      "viscaDefinition" : "C:/GIT/BCD2PTZ/BCD2PTZ/src/main/resources/AVER_PTZ310.json",
-      "assignedGuiPanel" : "A",
-      "assignedMidiPanel" : "A"
+      "viscaDefinition" : "config/AVER_PTZ310.json",
+      "assignedGuiPanel" : "C",
+      "assignedMidiPanel" : "B"
     } ],
     "guiConstraints" : {
       "lcdFontPath" : "C:/GIT/BCD2PTZ/BCD2PTZ/src/main/resources/DSEG14Classic-Regular.ttf"
     },
     "transport" : {
-      "socketTimeout" : 150
+      "socketTimeout" : 150,
+      "autoIp" : false,
+      "localIp" : "100.75.75.78",
+      "localPort" : 52381
     }
   },
   "user" : { },

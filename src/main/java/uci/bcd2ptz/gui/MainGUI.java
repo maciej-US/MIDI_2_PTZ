@@ -1,15 +1,16 @@
 package uci.bcd2ptz.gui;
 
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import uci.bcd2ptz.AppConfig;
-import uci.bcd2ptz.AppConfigManager;
+import lombok.Getter;
+import lombok.Setter;
+import uci.bcd2ptz.config.AppConfig;
+import uci.bcd2ptz.config.AppConfigManager;
+import uci.bcd2ptz.config.ConfigurationUpdateResults;
 import uci.bcd2ptz.core.*;
 import uci.bcd2ptz.core.ControlCore.ControlPanelId;
 import uci.bcd2ptz.midi.MidiControllerManager;
 import uci.bcd2ptz.ptz.PTZCamera;
 import uci.bcd2ptz.ptz.PTZCameraManager;
-import uci.bcd2ptz.visca.ViscaConfig;
 
 import javax.swing.*;
 import javax.swing.filechooser.FileNameExtensionFilter;
@@ -20,11 +21,7 @@ import java.awt.event.KeyEvent;
 import java.awt.event.WindowEvent;
 import java.io.File;
 import java.util.EnumMap;
-import java.util.HashSet;
 import java.util.Map;
-import java.util.Set;
-
-import static uci.bcd2ptz.core.ControlCore.LOGGER;
 
 
 public class MainGUI implements Runnable, ControlEventListener {
@@ -46,17 +43,18 @@ public class MainGUI implements Runnable, ControlEventListener {
     private ControlEventBus outputBus;
     private PTZCameraManager cameraManager;
     private volatile boolean initialized = false;
-    private AppConfig appConfig;
+    @Getter @Setter
+    private volatile boolean firstLaunch;
     private AppConfigManager configManager;
     private MidiControllerManager midiManager;
 
     private final Map<ControlCore.ControlPanelId, GUIPanel> panels = new EnumMap<>(ControlCore.ControlPanelId.class);
 
-    public MainGUI(ControlEventBus outputBus, AppConfigManager configManager, MidiControllerManager midiManager){
+    public MainGUI(ControlEventBus outputBus, AppConfigManager configManager, MidiControllerManager midiManager, boolean firstLaunch) {
         this.configManager = configManager;
-        this.appConfig = configManager.getConfig();
         this.outputBus = outputBus;
         this.midiManager = midiManager;
+        this.firstLaunch = firstLaunch;
     }
 
     //============= GUI API METHODS =====================
@@ -118,14 +116,14 @@ public class MainGUI implements Runnable, ControlEventListener {
 
         JMenuItem saveConfigItem = new JMenuItem("Zapisz konfigurację");
         saveConfigItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S, InputEvent.CTRL_DOWN_MASK));
-        saveConfigItem.addActionListener(e -> saveConfiguration(appConfig));
+        saveConfigItem.addActionListener(e -> saveConfiguration(configManager.getConfig()));
 
         JMenuItem exportConfigItem = new JMenuItem("Eksportuj konfigurację");
-        exportConfigItem.addActionListener(e -> saveConfigurationAs(appConfig));
+        exportConfigItem.addActionListener(e -> saveConfigurationAs(configManager.getConfig()));
 
         JMenuItem setupItem = new JMenuItem(     "Ustawienia");
         setupItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_K, InputEvent.CTRL_DOWN_MASK));
-        setupItem.addActionListener(this::actionPerformed);
+        setupItem.addActionListener(e -> showSettingsDialog());
 
         JMenuItem exitItem = new JMenuItem(      "Zamknij");
         exitItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_F4, InputEvent.ALT_DOWN_MASK));
@@ -199,6 +197,22 @@ public class MainGUI implements Runnable, ControlEventListener {
 
         initialized = true;
 
+        if (firstLaunch) {
+            JOptionPane.showMessageDialog(
+                    frame,
+                    """
+                    Aplikacja nie została jeszcze skonfigurowana.
+        
+                    Skonfiguruj połączenie z kamerami,
+                    transport oraz kontroler MIDI.
+                    """,
+                    "Pierwsze uruchomienie",
+                    JOptionPane.INFORMATION_MESSAGE
+            );
+
+            showSettingsDialog();
+        }
+
     }
 
     private GUIPanel createPanel(
@@ -211,7 +225,7 @@ public class MainGUI implements Runnable, ControlEventListener {
                         this,
                         cameraManager,
                         midiManager,
-                        appConfig
+                        configManager
                 );
 
         panels.put(panelId, panel);
@@ -235,6 +249,7 @@ public class MainGUI implements Runnable, ControlEventListener {
             if (camera == null) {
                 continue;
             }
+          /*  System.out.println("ADD CAMERA " + camera.getCameraId() + " HASH=" + System.identityHashCode(camera));*/
 
             if (!first) {contentPanel.add(new VerticalSeparator());
             }
@@ -245,7 +260,7 @@ public class MainGUI implements Runnable, ControlEventListener {
 
         contentPanel.revalidate();
         contentPanel.repaint();
-        //refreshCameraMenu();
+        refreshCameraMenu();
 
         frame.pack();
         refreshStatusInfo();
@@ -306,73 +321,59 @@ public class MainGUI implements Runnable, ControlEventListener {
         }
     }
 
-    public void reloadConfiguration(AppConfig config) {
+    public void reloadConfiguration() {
 
-        this.appConfig = config;
-
-        Set<String> existingCameras = new HashSet<>(cameraManager.getCameras().keySet());
-
-        for (AppConfig.CameraConfig cameraConfig : config.getSystem().getCameras()) {
-            try {
-                ObjectMapper mapper = new ObjectMapper();
-
-                ViscaConfig viscaConfig = mapper.readValue(new File(cameraConfig.getViscaDefinition()), ViscaConfig.class);
-                ControlPanelId corePanel = ControlPanelId.valueOf(cameraConfig.getAssignedGuiPanel());
-
-                ControlPanelId midiPanel = null;
-                if (cameraConfig.getAssignedMidiPanel() != null) {
-                    midiPanel = ControlPanelId.valueOf(cameraConfig.getAssignedMidiPanel());
-                }
-
-                int socketTimeout =((Number) config.getSystem().getTransport().get("socketTimeout")).intValue();
-
-                //DEBUG
-                System.out.println( "Loading " + cameraConfig.getCameraId());
-
-                cameraManager.addCamera(cameraConfig.getCameraId(), cameraConfig.getIpAddress(), cameraConfig.getPort(), cameraManager.getLocalPort(),
-                        socketTimeout, cameraConfig.getDisplayName(), viscaConfig, corePanel, midiPanel);
-
-                existingCameras.remove(cameraConfig.getCameraId());
-
-            } catch (Exception ex) {
-                LOGGER.warning("Unable to reload camera " + cameraConfig.getCameraId() + ": " + ex.getMessage());
-            }
-        }
-
-        for (String cameraId : existingCameras) {
-            cameraManager.removeCamera(cameraId);
-        }
-
-        configManager.notifyConfigurationChanged();
+        //DEBUG
+        System.out.println("RELOAD CONFIG GUI");
+        System.out.println(panels.keySet());
+        System.out.println("CORE PANELS = " + panels.keySet()
+        );
         rebuildPanels();
         refreshStatusInfo();
+
         midiManager.updateMidiIndicators();
     }
 
     private void importConfiguration() {
 
         JFileChooser chooser = new JFileChooser();
-        chooser.setFileFilter(new FileNameExtensionFilter("JSON Files","json"));
+        chooser.setFileFilter(new FileNameExtensionFilter("JSON Files", "json"));
 
-        if (chooser.showOpenDialog(frame) != JFileChooser.APPROVE_OPTION) {
+        if (chooser.showOpenDialog(frame)
+                != JFileChooser.APPROVE_OPTION) {
             return;
         }
 
-        try {
-            AppConfig config = configManager.load(chooser.getSelectedFile());
-            //DEbug
-            System.out.println("File " + chooser.getSelectedFile().getName() + "  readed.");
-            System.out.println("AppConfig values \n" + appConfig.toString());
-            reloadConfiguration(config);
+        ConfigurationUpdateResults results = configManager.loadConfiguration(chooser.getSelectedFile());
 
-        } catch (Exception ex) {
-            JOptionPane.showMessageDialog(frame,"Błąd wczytywania konfiguracji:\n" + ex.getMessage(),"Błąd",JOptionPane.ERROR_MESSAGE);
+        if (!results.getErrors().isEmpty()) {
+
+            JOptionPane.showMessageDialog(
+                    frame,
+                    formatErrors(results),
+                    "Błąd importu konfiguracji",
+                    JOptionPane.ERROR_MESSAGE
+            );
+
+            return;
         }
+
+        reloadConfiguration();
+
+        JOptionPane.showMessageDialog(
+                frame,
+                "Konfiguracja została poprawnie załadowana.",
+                "Import konfiguracji",
+                JOptionPane.INFORMATION_MESSAGE
+        );
     }
 
     public void saveConfiguration(AppConfig appConfig) {
         try {
-            configManager.save(appConfig);
+            System.out.println("CONFIG TO SAVE:");
+            System.out.println(configManager.getConfig());
+
+            configManager.saveConfiguration(appConfig);
         } catch (Exception ex) {
             JOptionPane.showMessageDialog(null,"Błąd zapisu konfiguracji:\n"+ ex.getMessage(),"Błąd",JOptionPane.ERROR_MESSAGE);
         }
@@ -395,10 +396,34 @@ public class MainGUI implements Runnable, ControlEventListener {
                 targetFile = new File(targetFile.getAbsolutePath() + ".json");
             }
 
-            configManager.save(config, targetFile);
+            configManager.saveConfiguration(config, targetFile);
 
         } catch (Exception ex) {
             JOptionPane.showMessageDialog(frame, ex.getMessage(), "Błąd zapisu", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    public void showSettingsDialog() {
+
+        new SettingsDialog(
+                frame,
+                configManager,
+                cameraManager,
+                this
+        ).setVisible(true);
+    }
+
+    private void refreshCameraMenu() {
+
+        int index = 0;
+
+        for (ControlPanelId panelId : ControlPanelId.values()) {
+
+            JMenu cameraMenu = (JMenu) camerasMenu.getItem(index++);
+            PTZCamera camera = cameraManager.getCoreAssignedCamera(panelId);
+
+            boolean available = camera != null;
+            cameraMenu.setEnabled(available);
         }
     }
 
@@ -418,8 +443,23 @@ public class MainGUI implements Runnable, ControlEventListener {
                 frame,
                 configManager,
                 cameraManager,
-                midiManager,
                 this
         ).setVisible(true);
     }
+
+    public String formatErrors(
+            ConfigurationUpdateResults results) {
+
+        StringBuilder sb = new StringBuilder("Podczas aktualizacji konfiguracji wystąpiły błędy:\n\n");
+
+        for (Map.Entry<AppConfigManager.ConfigurationSection,String> entry : results.getErrors().entrySet()) {
+            sb.append("• ")
+                    .append(entry.getKey())
+                    .append(": ")
+                    .append(entry.getValue())
+                    .append("\n");
+        }
+        return sb.toString();
+    }
+
 }

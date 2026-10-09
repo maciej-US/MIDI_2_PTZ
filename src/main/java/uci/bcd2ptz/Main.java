@@ -1,6 +1,9 @@
 package uci.bcd2ptz;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import uci.bcd2ptz.config.AppConfig;
+import uci.bcd2ptz.config.AppConfigManager;
+import uci.bcd2ptz.config.ConfigurationUpdateResults;
 import uci.bcd2ptz.core.ControlCore;
 import uci.bcd2ptz.core.ControlCore.ControlPanelId;
 import uci.bcd2ptz.core.ControlEventBus;
@@ -15,18 +18,14 @@ import javax.sound.midi.MidiDevice;
 import javax.sound.midi.MidiSystem;
 import javax.swing.*;
 import java.io.File;
+import java.net.InetAddress;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
-import static uci.bcd2ptz.core.ControlEvent.EventSource.GUI;
-
 public class Main {
 
-    private MidiController midiController;
-
-     static void main(String[] args)
-            throws Exception {
+     static void main(String[] args)throws Exception {
 
         //TODO: Splash SCREEN
 
@@ -38,141 +37,70 @@ public class Main {
              Files.createDirectories(configDir);
          }
 
-        //======== CONFIG LOADER ==============
-
-        AppConfigManager configManager = new AppConfigManager("config/config.json");
-
-        AppConfig appConfig = configManager.loadOrCreateDefault();
-        ControlCore.RunMode mode = ControlCore.RunMode.FULL;
-
-        //==========ControlEvent BUS for ControlCoreListener
+        //======== CONFIGURATION STAGE ==============
 
          ControlEventBus eventBus = new ControlEventBus();
 
+         AppConfigManager configManager = new AppConfigManager("config/config.json", eventBus);
 
-         // ================= CAMERAS =================
+         PTZCameraManager cameraManager = new PTZCameraManager(eventBus, configManager);
 
-        //TODO: Automatyka pobierania adresu IP
-        PTZCameraManager cameraManager = new PTZCameraManager("100.75.75.78", 52381, eventBus);
+         MidiControllerManager midiManager = new MidiControllerManager(configManager, eventBus, ControlCore.RunMode.FULL);
 
-        for (AppConfig.CameraConfig camera : appConfig.getSystem().getCameras()) {
+         configManager.setCameraManager(cameraManager);
+         configManager.setMidiManager(midiManager);
 
-            System.out.println(
-                    "CONFIG ASSIGNEMNTS: "
-                            + camera.getCameraId()
-                            + " GUI=" + camera.getAssignedGuiPanel()
-                            + " MIDI=" + camera.getAssignedMidiPanel()
-            );
+         ConfigurationUpdateResults results = configManager.loadOrCreateDefault();
+         if (!results.getErrors().isEmpty()){
+            System.err.println((results));
         }
 
-        ObjectMapper viscaMapper = new ObjectMapper();
+         //========== FIRST LAUNCH CHECK ==================
 
-        for (AppConfig.CameraConfig cameraConfig : appConfig.getSystem().getCameras()) {
+         boolean firsLaunch = configManager.isFirstLaunch();
 
-            ViscaConfig viscaConfig = viscaMapper.readValue(new File(cameraConfig.getViscaDefinition()),ViscaConfig.class);
+         //DEBUG
 
-            ControlPanelId assignedGuiPanel;
-            try {
-                assignedGuiPanel = ControlPanelId.valueOf(cameraConfig.getAssignedGuiPanel());
-            } catch (Exception e){
-                throw new RuntimeException(
-                        "Camera " + cameraConfig.getCameraId() + " has no assigned GUI panel"
-                        );
-            }
+         MainGUI gui = new MainGUI(
+                         eventBus,
+                         configManager,
+                         midiManager,
+                         firsLaunch
+                 );
 
-            ControlPanelId assignedMidiPanel = null;
+         gui.setCameraManager(cameraManager);
+         new Thread(gui).start();
+         //gui.run();
 
-            if (cameraConfig.getAssignedMidiPanel() != null && !cameraConfig.getAssignedMidiPanel().isBlank()){
-                assignedMidiPanel = ControlPanelId.valueOf(cameraConfig.getAssignedMidiPanel());
-            }
+         // ================= RUNTIME MODE =================
 
-            //DEBUG:
-            //System.out.println("ASSIGNED MIDI [Main] " + cameraConfig.getCameraId() + " --> " + assignedMidiPanel);
+         if (!firsLaunch) {
+             cameraManager.initialize();
+             midiManager.initialize();
 
-            PTZCamera camera =
-                    cameraManager.addCamera(
-                            cameraConfig.getCameraId(),
-                            cameraConfig.getIpAddress(),
-                            cameraConfig.getPort(),
-                            cameraConfig.getPort(),
-                            (int)appConfig.getSystem().getTransport().get("socketTimeout"),
-                            cameraConfig.getDisplayName(),
-                            viscaConfig,
-                            assignedGuiPanel,
-                            assignedMidiPanel
-                    );
+             // ================= CORE =================
 
-            System.out.println(
-                    cameraConfig.getCameraId()
-                            + " name: "
-                            + cameraConfig.getDisplayName()
-                            + " status: "
-                            + camera
-                            + " Online: "
-                            + camera.powerStatusRequest()
-            );
-        }
+             ControlCore.RunMode mode = midiManager.isMidiControllerRunning() ? ControlCore.RunMode.FULL : ControlCore.RunMode.NO_HARDWARE;
 
-        //DEBUG
-        System.out.println("PANEL ASSIGNMENT STATUS\n"
-                //+ "MIDI PANELS " + cameraManager.getMidiAssignements()
-                + "GUI PANELS  " + cameraManager.getCoreAssignements());
+             ControlCore core = new ControlCore(
+                     cameraManager,
+                     midiManager,
+                     eventBus,
+                     mode
+             );
 
+             core.start();
+             configManager.setCore(core);
 
-        // ================ MIDI ============
+             // ================= GUI =================
 
-         MidiControllerManager midiManager = new MidiControllerManager(
-                                configManager,
-                                eventBus,
-                                mode
-                                );
-
-         configManager.addConfigurationListener(midiManager);
-
-         midiManager.initialize();
-
-         if(!midiManager.isMidiControllerRunning()){
-             mode = ControlCore.RunMode.NO_HARDWARE;
+             core.setGUI(gui);
+             //--synchronizacja stanów
+             while (!gui.isInitialized()) {Thread.sleep(50);}
+             configManager.setGui(gui);
+             core.syncInterface();
+             gui.refreshStatusInfo();
          }
-
-        // ================= CORE =================
-
-        ControlCore core = new ControlCore(
-                        cameraManager,
-                        midiManager,
-                        eventBus,
-                        mode
-                );
-
-        core.start();
-
-        // ================= GUI =================
-
-        MainGUI gui = new MainGUI(eventBus, configManager, midiManager);
-        gui.setCameraManager(cameraManager);
-
-        new Thread(gui).start();
-        core.setGUI(gui);
-        //--synchronizacja stanów
-        while (!gui.isInitialized()){
-            Thread.sleep(50);
-        }
-        core.syncInterface();
-        gui.refreshStatusInfo();
-
-        // ================= WARN =================
-
-        if (mode == ControlCore.RunMode.NO_HARDWARE) {
-
-            SwingUtilities.invokeLater(
-                    () -> JOptionPane.showMessageDialog(
-                            null,
-                            "Nie znaleziono urządzenia MIDI.\nTryb bez hardware.",
-                            "BCD2PTZ",
-                            JOptionPane.WARNING_MESSAGE
-                    )
-            );
-        }
     }
 
     /* =====================================

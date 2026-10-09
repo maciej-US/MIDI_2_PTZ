@@ -280,4 +280,9 @@ public class RotarySwitch extends JComponent {
     public int getValue() {
         return currentValue;
     }
+
+    public void setActive (boolean active){
+        this.active = active;
+        repaint();
+    }
 }

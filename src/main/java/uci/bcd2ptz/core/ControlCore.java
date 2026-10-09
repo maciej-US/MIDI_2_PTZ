@@ -63,6 +63,7 @@ public class ControlCore {
     }
     public enum RunMode {
         FULL,
+        TEST,
         NO_HARDWARE
     }
 
@@ -342,6 +343,10 @@ public class ControlCore {
                 handleCameraSelect(coreEvent);
                 break;
 
+            case "STATUS_REQUEST":
+
+                break;
+
             default:
                 System.out.println(
                         "Unknown action: "
@@ -361,8 +366,8 @@ public class ControlCore {
             return;
         }
         //DEBUG:
-//        System.out.println("===========CONTROL CORE ===============\n" +
-//                "handle PAN " + controlId + " -> Received value: " + value);
+        /*System.out.println("===========CONTROL CORE ===============\n" +
+                "handle PAN " + event.getPanel() + " -> Received value: " + value);*/
 
         PTZCamera camera =  cameraManager.getCoreAssignedCamera(event.getPanel());
         //Debug
@@ -1291,7 +1296,7 @@ public class ControlCore {
 
             case "TILT":
                 if (isNeutral(event.getValue())) {
-                    enterJoystickMode(panel, Control.TILT);
+                    enterJoystickMode(panel, TILT);
                 } else{
                     enterWaitNeutral(panel, TILT);
                 }
@@ -1390,79 +1395,95 @@ public class ControlCore {
     private void initializeStatusIndicators() {
 
         for (ControlPanel panel : panels.values()) {
-
-            sendControlEvent(
-                    new ControlEvent(
-                            SYSTEM,
-                            panel.getId(),
-                            "ABSOLUTE_MODE_INDICATOR",
-                            panel.getStates().get(TILT) == ModeState.ABSOLUTE ? 1 : 0
-                    )
-            );
-
-            sendControlEvent(
-                    new ControlEvent(
-                            SYSTEM,
-                            panel.getId(),
-                            "AUTO_FOLLOW_INDICATOR",
-                            panel.getStates().get(AUTO_FOLLOW) == ModeState.OFF ? 0 : 1
-                    )
-            );
-
-            sendControlEvent(
-                    new ControlEvent(
-                            SYSTEM,
-                            panel.getId(),
-                            "ONE_PUSH_FOCUS_INDICATOR",
-                            0
-                    )
-            );
-
-            sendControlEvent(
-                    new ControlEvent(
-                            SYSTEM,
-                            panel.getId(),
-                            "FOCUS_MODE_INDICATOR",
-                            panel.getStates().get(FOCUS_MODE) == ModeState.AUTO ? 1 : 0
-                    )
-            );
-
-            sendControlEvent(
-                    new ControlEvent(
-                            SYSTEM,
-                            panel.getId(),
-                            "EXPOSURE_MODE_INDICATOR",
-                            panel.getStates().get(EXPOSURE_MODE) == ModeState.AUTO ? 1 : 0
-                    )
-            );
-
-            sendControlEvent(
-                    new ControlEvent(
-                            SYSTEM,
-                            panel.getId(),
-                            "WHITE_BALANCE_PUSH_INDICATOR",
-                            0
-                    )
-            );
-
-            sendControlEvent(
-                    new ControlEvent(
-                            SYSTEM,
-                            panel.getId(),
-                            "TALLY_INDICATOR",
-                            0
-                    )
-            );
-
-            sendControlEvent(
-                    new ControlEvent(
-                            SYSTEM,
-                            panel.getId(),
-                            "PANEL_SELECT_INDICATOR",
-                            panel.getId() == A ? 1 : 0
-                    )
-            );
+            initializeStatusIndicators(panel);
         }
+        midiController.sendControlEvent(
+                new ControlEvent(
+                        SYSTEM,
+                        A,
+                        "PANEL_SELECT_INDICATOR",
+                        1
+                )
+        );
+        midiController.sendControlEvent(
+                new ControlEvent(
+                        SYSTEM,
+                        B,
+                        "PANEL_SELECT_INDICATOR",
+                        0
+                )
+        );
+    }
+
+    private void initializeStatusIndicators(ControlPanel panel) {
+
+        sendControlEvent(
+                new ControlEvent(
+                        SYSTEM,
+                        panel.getId(),
+                        "ABSOLUTE_MODE_INDICATOR",
+                        panel.getStates().get(TILT) == ModeState.ABSOLUTE ? 1 : 0
+                )
+        );
+
+        sendControlEvent(
+                new ControlEvent(
+                        SYSTEM,
+                        panel.getId(),
+                        "AUTO_FOLLOW_INDICATOR",
+                        panel.getStates().get(AUTO_FOLLOW) == ModeState.OFF ? 0 : 1
+                )
+        );
+
+        sendControlEvent(
+                new ControlEvent(
+                        SYSTEM,
+                        panel.getId(),
+                        "ONE_PUSH_FOCUS_INDICATOR",
+                        0
+                )
+        );
+
+        sendControlEvent(
+                new ControlEvent(
+                        SYSTEM,
+                        panel.getId(),
+                        "FOCUS_MODE_INDICATOR",
+                        panel.getStates().get(FOCUS_MODE) == ModeState.AUTO ? 1 : 0
+                )
+        );
+
+        sendControlEvent(
+                new ControlEvent(
+                        SYSTEM,
+                        panel.getId(),
+                        "EXPOSURE_MODE_INDICATOR",
+                        panel.getStates().get(EXPOSURE_MODE) == ModeState.AUTO ? 1 : 0
+                )
+        );
+
+        sendControlEvent(
+                new ControlEvent(
+                        SYSTEM,
+                        panel.getId(),
+                        "WHITE_BALANCE_PUSH_INDICATOR",
+                        0
+                )
+        );
+
+        sendControlEvent(
+                new ControlEvent(
+                        SYSTEM,
+                        panel.getId(),
+                        "TALLY_INDICATOR",
+                        0
+                )
+        );
+
+        //DEBUG
+        //System.out.println ("Send panel selectro LED update...");
+
+        updateCameraIndicators();
     }
 
     private void updateCameraIndicators() {
@@ -1540,7 +1561,6 @@ public class ControlCore {
         updateCameraIndicators();
         gui.refreshPanelBindings();
     }
-
 
 
     /* ============================
@@ -1733,18 +1753,33 @@ public class ControlCore {
         }
     }
 
+    public void reconfigurePanels() {
+
+        panels.clear();
+
+        for (ControlPanelId panelId : ControlPanelId.values()) {
+
+            if (cameraManager.getCoreAssignedCamera(panelId) != null) {
+
+                panels.put(
+                        panelId,
+                        createPanel(panelId)
+                );
+            }
+        }
+    }
+
     private void sendControlEvent(ControlEvent event) {
 
         //DEBUG
-        /*System.out.println(
+       /* System.out.println(
                 "SEND EVENT\n" +
                         "CORE PANEL = " + event.getPanel() +
                         "\nMIDI PANEL = " + midiManager.getMidiBinding(event.getPanel()) +
                         "\nACTION = " + event.getAction()
         );*/
 
-        ControlPanelId midiPanel =
-                midiManager.getMidiBinding(event.getPanel());
+        ControlPanelId midiPanel = midiManager.getMidiBinding(event.getPanel());
 
         if (midiPanel != null && mode == RunMode.FULL) {
 
