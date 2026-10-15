@@ -1,16 +1,5 @@
 //package uci.bcd2ptz.test;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import uci.bcd2ptz.core.ControlEvent;
-import uci.bcd2ptz.midi.MidiConfig;
-import uci.bcd2ptz.midi.MidiController;
-
-import java.io.File;
-import java.util.Scanner;
-
-import static uci.bcd2ptz.core.ControlCore.ControlPanelId.A;
-import static uci.bcd2ptz.core.ControlEvent.EventSource.SYSTEM;
-
 @Deprecated
 
 public class MidiOutputTest {

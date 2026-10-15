@@ -1,14 +1,14 @@
-package uci.bcd2ptz.test;
+package uci.midi2ptz.test;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import uci.bcd2ptz.core.ControlEvent;
-import uci.bcd2ptz.midi.MidiConfig;
-import uci.bcd2ptz.midi.MidiController;
+import uci.midi2ptz.core.ControlEvent;
+import uci.midi2ptz.midi.MidiConfig;
+import uci.midi2ptz.midi.MidiController;
 
 import java.io.File;
 import java.util.concurrent.BlockingQueue;
 
-import static uci.bcd2ptz.core.ControlCore.RunMode.FULL;
+import static uci.midi2ptz.core.ControlCore.RunMode.FULL;
 
 public class MidiInputTest {
 

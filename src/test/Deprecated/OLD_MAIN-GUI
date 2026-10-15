@@ -1,12 +1,12 @@
-package uci.bcd2ptz.gui;
+package uci.midi2ptz.gui;
 
 
-import uci.bcd2ptz.core.ControlCore;
-import uci.bcd2ptz.core.ControlEvent;
-import uci.bcd2ptz.core.ControlEventBus;
-import uci.bcd2ptz.core.ControlEventListener;
-import uci.bcd2ptz.ptz.PTZCameraManager;
-import uci.bcd2ptz.visca.FieldDefinition;
+import uci.midi2ptz.core.ControlCore;
+import uci.midi2ptz.core.ControlEvent;
+import uci.midi2ptz.core.ControlEventBus;
+import uci.midi2ptz.core.ControlEventListener;
+import uci.midi2ptz.ptz.PTZCameraManager;
+import uci.midi2ptz.visca.FieldDefinition;
 
 import javax.swing.*;
 import java.awt.*;
@@ -14,7 +14,7 @@ import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
 import java.awt.event.WindowEvent;
 
-import static uci.bcd2ptz.core.ControlEvent.EventSource.GUI;
+import static uci.midi2ptz.core.ControlEvent.EventSource.GUI;
 
 
 public class MainGUI implements Runnable, ControlEventListener {

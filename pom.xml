@@ -7,9 +7,12 @@
 
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>org.example</groupId>
-    <artifactId>BCD2PTZ</artifactId>
-    <version>1.0-SNAPSHOT</version>
+    <groupId>uci</groupId>
+    <artifactId>midi2PTZ</artifactId>
+    <organization>
+        <name>UCI-SRNKC</name>
+    </organization>
+    <version>1.0</version>
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -81,8 +84,15 @@
                 <version>3.13.0</version>
 
                 <configuration>
-                    <source>16</source>
-                    <target>16</target>
+                    <release>25</release>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>1.18.46</version>
+                        </path>
+                    </annotationProcessorPaths>
+
                 </configuration>
             </plugin>
 

@@ -1,4 +1,4 @@
-package uci.bcd2ptz.visca;
+package uci.midi2ptz.visca;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
