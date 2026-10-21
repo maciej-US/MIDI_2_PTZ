@@ -33,7 +33,7 @@ public class PTZCameraManager {
     private final Map<ControlPanelId, PTZCamera> midiPanelAssignments = new ConcurrentHashMap<>();
     @Setter
     private AppConfigManager appConfigManager;
-    private volatile boolean firstLanuch;
+    private ControlEventBus inputBus;
 
     //UDP communication
     private final Map <String, PendingPacket> pendingPackets = new ConcurrentHashMap<>();
@@ -45,15 +45,17 @@ public class PTZCameraManager {
     private boolean running = true;
     private boolean initialized;
 
+    //STATUS
     private static final Logger LOGGER = Logger.getLogger(PTZCameraManager.class.getName());
-    private ControlEventBus inputBus;
+    public enum TransportState {ONLINE, OFFLINE, UNINITIALIZED};
+    private TransportState transportState = TransportState.OFFLINE;
 
     public PTZCameraManager(ControlEventBus eventBus, AppConfigManager appConfigManager)  {
 
         this.inputBus = eventBus;
         this.appConfigManager = appConfigManager;
+        this.transportState = TransportState.UNINITIALIZED;
     }
-
 
 
     /* ==================================
@@ -164,12 +166,20 @@ public class PTZCameraManager {
 
     public ConfigurationUpdateResults reconfigureCameras() {
 
+        LOGGER.info("reconfigureCameras(): state=" + transportState);
+
         if (!initialized){
             initialize();
         }
+        ConfigurationUpdateResults results = new ConfigurationUpdateResults();
+
+        if (transportState != TransportState.ONLINE){
+            LOGGER.warning("Transport is OFFLINE. Camera update unavailable");
+            results.getErrors().put(AppConfigManager.ConfigurationSection.CAMERA, "Transport is OFFLINE, update unavailable");
+            return results;
+        }
 
         Set<String> existingCameras = new HashSet<>(cameras.keySet());
-        ConfigurationUpdateResults results = new ConfigurationUpdateResults();
 
         guiPanelAssignments.clear();
         midiPanelAssignments.clear();
@@ -203,12 +213,16 @@ public class PTZCameraManager {
                 existingCameras.remove(cameraConfig.getCameraId()
                 );
 
-            } catch (Exception e) {
+            }catch (SocketException se){
+                LOGGER.warning("Transport error. Switching to OFFLINE MODE.");
+                transportState = TransportState.OFFLINE;
+            }
+            catch (Exception e) {
                 results.addError(AppConfigManager.ConfigurationSection.CAMERA, "Unable to reconfigure camera: " + cameraConfig.getCameraId()
                         + "\n ERROR: " + e.getMessage());
 
-                LOGGER.warning("Unable to configure camera " + cameraConfig.getCameraId() + ": " + e.getMessage()
-                );
+                LOGGER.warning("Unable to configure camera " + cameraConfig.getCameraId() + ": " + e.getMessage());
+                transportState = TransportState.OFFLINE;
             }
         }
 
@@ -218,9 +232,9 @@ public class PTZCameraManager {
 
         LOGGER.info("Camera configuration reloaded.");
         //DEBUG
-       /* System.out.println("MIDI ASSIGNMENTS = " + midiPanelAssignments);
+        System.out.println("MIDI ASSIGNMENTS = " + midiPanelAssignments);
         System.out.println("GUI ASSIGNMENTS = " + guiPanelAssignments);
-        System.out.println("CAMERAS = " + cameras.keySet());*/
+        System.out.println("CAMERAS = " + cameras.keySet());
         return results;
     }
 
@@ -383,24 +397,16 @@ public class PTZCameraManager {
         }
     }
 
-
     // =====================================
-    //     CONFIGURATION MANAGEMENT
+    //     RUNTIME MANAGEMENT
     //=====================================
     public void initialize(){
 
-        if (initialized || socket == null) {
+        initializeTransport(appConfigManager.getConfig());
+
+        if (transportState != TransportState.ONLINE){
+            LOGGER.info("Camera Manager in OFFLINE mode.");
             return;
-        }
-
-        AppConfig appConfig = appConfigManager.getConfig();
-        ConfigurationUpdateResults results = new ConfigurationUpdateResults();
-
-        this.localIp = (String)appConfig.getSystem().getTransport().get("localIp");
-        this.localPort = (int)appConfig.getSystem().getTransport().get("localPort");
-
-        if (!results.getErrors().isEmpty()){
-            LOGGER.severe("Socket create error: " + results.getErrors());
         }
 
         this.receiverThread = new Thread(() -> {
@@ -452,17 +458,45 @@ public class PTZCameraManager {
 
         initialized = true;
 
-        results = reconfigureCameras();
+        if (transportState != TransportState.ONLINE) {
+            LOGGER.info("Camera Manager started in OFFLINE mode.");
+            return;
+        }
+
+        ConfigurationUpdateResults results = reconfigureCameras();
 
         if (!results.getErrors().isEmpty()) {
             LOGGER.warning("CAMERA configuration errors: " + results.getErrors());
         }
     }
 
+    public void initializeTransport (AppConfig config){
+
+        DatagramSocket socket = null;
+        try{
+            socket = validateTransport(config);
+        }catch (Exception e){
+            LOGGER.warning("Socket Error: " + e.getMessage());
+            transportState = TransportState.OFFLINE;
+        }
+
+        if (socket != null){
+            updateTransportSocket(socket);
+            localIp = socket.getLocalAddress().getHostAddress();
+            localPort = socket.getLocalPort();
+            transportState = TransportState.ONLINE;
+        }
+    }
+
     public static DatagramSocket validateTransport(AppConfig config) throws Exception {
 
+
         String localIp = String.valueOf(config.getSystem().getTransport().get("localIp"));
+
         int localPort = (Integer) config.getSystem().getTransport().get("localPort");
+        if (localPort != 52381){
+            localPort = 52381;
+        }
 
         DatagramSocket socket = new DatagramSocket(null);
         socket.setReuseAddress(true);

@@ -1,5 +1,3 @@
-package uci.midi2ptz;
-
 import javax.sound.midi.*;
 import java.util.Scanner;
 

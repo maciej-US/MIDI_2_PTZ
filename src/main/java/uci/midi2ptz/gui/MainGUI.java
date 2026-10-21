@@ -221,8 +221,7 @@ public class MainGUI implements Runnable, ControlEventListener {
 
     }
 
-    private GUIPanel createPanel(
-            ControlPanelId panelId) {
+    private GUIPanel createPanel(ControlPanelId panelId) {
 
         GUIPanel panel =
                 new GUIPanel(
@@ -247,17 +246,17 @@ public class MainGUI implements Runnable, ControlEventListener {
 
         boolean first = true;
 
-        for (ControlPanelId panelId
-                : ControlPanelId.values()) {
+        for (ControlPanelId panelId : ControlPanelId.values()) {
 
             PTZCamera camera = cameraManager.getCoreAssignedCamera(panelId);
 
             if (camera == null) {
                 continue;
             }
-          /*  System.out.println("ADD CAMERA " + camera.getCameraId() + " HASH=" + System.identityHashCode(camera));*/
+            System.out.println("ADD CAMERA " + camera.getCameraId() + " HASH=" + System.identityHashCode(camera));
 
             if (!first) {contentPanel.add(new VerticalSeparator());
+
             }
 
             contentPanel.add(createPanel(panelId));

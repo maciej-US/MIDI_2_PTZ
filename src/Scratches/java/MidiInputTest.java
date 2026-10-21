@@ -1,5 +1,3 @@
-package uci.midi2ptz.test;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import uci.midi2ptz.core.ControlEvent;
 import uci.midi2ptz.midi.MidiConfig;

@@ -15,11 +15,13 @@ import uci.midi2ptz.visca.ViscaConfig;
 import javax.sound.midi.*;
 import java.io.File;
 import java.net.DatagramSocket;
+import java.nio.file.Files;
 import java.util.*;
 
 
 import static javax.sound.midi.MidiSystem.getMidiDeviceInfo;
 import static uci.midi2ptz.Midi2PTZ.startRuntime;
+import static uci.midi2ptz.core.ControlCore.LOGGER;
 
 public class AppConfigManager {
 
@@ -38,8 +40,7 @@ public class AppConfigManager {
         VALIDATE_ONLY,
         COMMIT,
         INITIAL_LOAD,
-        INITIAL_COMMIT,
-        DEFAULT_LOAD
+        FIRST_LAUNCH
     }
 
     //private final List<ConfigurationListener>listeners = new ArrayList<>();
@@ -76,7 +77,13 @@ public class AppConfigManager {
             results.getErrors().put(ConfigurationSection.JSON_OPERATIONS, e.getMessage());
             return results;
         }
+
         results = updateConfiguration(newConfig, mode);
+
+        if (results.getErrors().isEmpty()){
+            this.config = newConfig;
+            return results;
+        }
 
         if (!results.getErrors().isEmpty()){
             return results;
@@ -150,24 +157,62 @@ public class AppConfigManager {
         return results;
     }
 
-    public boolean exists() {
+    public boolean configurationExists() {
 
         return configFile.exists();
     }
 
     public ConfigurationUpdateResults loadOrCreateDefault() {
 
-        try {
-            if (!exists()) {
-                this.config = createDefaultConfig();
-                this.config.setChanged(true);
-                return new ConfigurationUpdateResults();
-            }
-            firstLaunch = false;
-            return loadConfiguration(UpdateMode.DEFAULT_LOAD);
+        ConfigurationUpdateResults results = new ConfigurationUpdateResults();
 
-        }catch (Exception e){
-            ConfigurationUpdateResults results = new ConfigurationUpdateResults();
+        try {
+            // FIRST LAUNCH
+            if (!configurationExists()) {
+                config = createDefaultConfig();
+                config.setChanged(true);
+                firstLaunch = true;
+                return results;
+            }
+
+            // LOAD CONFIG
+            try {
+                AppConfig loadedConfig = MAPPER.readValue(configFile, AppConfig.class);
+
+                // STRUCTURE VALIDATION
+                if (!isConfigurationStructureValid(loadedConfig)) {
+                    LOGGER.warning("Configuration invalid.\nCreating default configuration.");
+                    try {
+                        Files.deleteIfExists(configFile.toPath());
+                    } catch (Exception ignore) {}
+
+                    config = createDefaultConfig();
+                    config.setChanged(true);
+                    firstLaunch = true;
+
+                    return results;
+                }
+
+                // CONFIG ACCEPTED
+                config = loadedConfig;
+                firstLaunch = false;
+                return loadConfiguration(UpdateMode.INITIAL_LOAD);
+
+            } catch (Exception e) {
+                LOGGER.warning("Unable to load configuration: " + e.getMessage());
+
+                try {
+                    Files.deleteIfExists(configFile.toPath());
+                } catch (Exception ignore) {}
+
+                config = createDefaultConfig();
+                config.setChanged(true);
+                firstLaunch = true;
+
+                return results;
+            }
+
+        } catch (Exception e) {
             results.getErrors().put(ConfigurationSection.JSON_OPERATIONS, e.getMessage());
             return results;
         }
@@ -210,8 +255,6 @@ public class AppConfigManager {
         this.config.setChanged(true);
     }
 
-
-
     public ConfigurationUpdateResults updateConfiguration (AppConfig newConfig, UpdateMode updateMode){
 
         //DEBUG
@@ -227,34 +270,17 @@ public class AppConfigManager {
         boolean transportChanged;
         boolean midiChanged;
         boolean camerasChanged;
-        boolean hardwareValidation =
-                !updateMode.equals(UpdateMode.INITIAL_LOAD)
-                && !updateMode.equals(UpdateMode.DEFAULT_LOAD)
-                && !updateMode.equals(UpdateMode.INITIAL_COMMIT);
-
-        boolean deploymentRequired = updateMode == UpdateMode.COMMIT || updateMode == UpdateMode.INITIAL_COMMIT;
+        boolean runtimeValidation = updateMode == UpdateMode.COMMIT || updateMode == UpdateMode.VALIDATE_ONLY;
 
         DatagramSocket preparedSocket = null;
 
         //STAGE 1
-        //Transport validation and changes calculation
-
-        if (updateMode == UpdateMode.INITIAL_LOAD
-                || updateMode == UpdateMode.INITIAL_COMMIT
-                || updateMode == UpdateMode.DEFAULT_LOAD ) {
-
+        //Changes calculation
+        if (updateMode == UpdateMode.INITIAL_LOAD || updateMode == UpdateMode.FIRST_LAUNCH) {
             transportChanged = true;
             midiChanged = true;
             camerasChanged = true;
-            try {
-                preparedSocket = PTZCameraManager.validateTransport(newConfig);
-            }catch (Exception e){
-                results.getErrors().put(ConfigurationSection.TRANSPORT, e.getMessage());
-                return results;
-            }
-
         } else {
-
             // PTZ Transport configuration update
             Map<String, Object> oldTransportConfig = this.config.getSystem().getTransport();
             transportChanged = !Objects.equals(oldTransportConfig, newTransportConfig);
@@ -276,7 +302,7 @@ public class AppConfigManager {
 
         // STAGE 2 - MIDI validation
 
-        if (midiChanged && updateMode != UpdateMode.DEFAULT_LOAD) {
+        if (midiChanged && runtimeValidation) {
             MidiDevice input = null;
             MidiDevice output = null;
             MidiConfig midiMapping = null;
@@ -313,7 +339,7 @@ public class AppConfigManager {
                 System.out.println("[CFG MAN] return after MIDI config file validation");
                 return results;
             }
-            if (hardwareValidation) {
+            if (runtimeValidation) {
                 try {
                     MidiControllerManager.validateConfiguration(newConfig, ControlCore.RunMode.TEST);
                 } catch (Exception e) {
@@ -323,15 +349,27 @@ public class AppConfigManager {
             }
         }
 
+        //STAGE 3 - TRANSPORT VALIDATION
 
-        // STAGE 3 - camera configuration validation
+        if (runtimeValidation) {
+            try {
+                preparedSocket = PTZCameraManager.validateTransport(newConfig);
+            }catch (Exception e) {
+                results.getErrors().put(ConfigurationSection.TRANSPORT, e.getMessage());
+                return results;
+            }
+        }
 
-        if (camerasChanged) {
+        if (updateMode == UpdateMode.INITIAL_LOAD){
+            cameraManager.initializeTransport(newConfig);
+        }
+
+        // STAGE 4 - camera configuration validation
+        if (camerasChanged && runtimeValidation) {
             try {
                 for (AppConfig.CameraConfig camera : newConfig.getSystem().getCameras()) {
 
                     // ===== VISCA CONFIG
-
                     String viscaPath = camera.getViscaDefinition();
                     if (viscaPath == null || viscaPath.isBlank()) {
                         throw new IllegalArgumentException("Brak pliku konfiguracji VISCA dla " + camera.getCameraId());
@@ -346,7 +384,7 @@ public class AppConfigManager {
                     mapper.readValue(viscaFile, ViscaConfig.class);
 
                     // ===== CONNECTION TEST
-                    if (hardwareValidation) {
+                    if (runtimeValidation) {
                         boolean online = cameraManager.testConnection(
                                 camera.getIpAddress(),
                                 camera.getPort(),
@@ -371,7 +409,9 @@ public class AppConfigManager {
             }
         }
 
-        if (updateMode.equals(UpdateMode.VALIDATE_ONLY)){
+        this.config = newConfig;
+
+        if (updateMode == UpdateMode.VALIDATE_ONLY){
             try {
                 if (preparedSocket != null && !preparedSocket.isClosed()) {
                     preparedSocket.close();
@@ -381,14 +421,10 @@ public class AppConfigManager {
             return results;
         }
 
-        this.config = newConfig;
 
-        if (updateMode == UpdateMode.INITIAL_COMMIT) {
+        if (updateMode == UpdateMode.INITIAL_LOAD) {
             try {
-                results = cameraManager.updateTransportSocket(preparedSocket);
-                if (!results.getErrors().isEmpty()){
-                  return results;
-                }
+                cameraManager.initializeTransport(this.config);
                 results = startRuntime(gui, this, cameraManager, midiManager, eventBus);
                 if (!results.getErrors().isEmpty()){
                     return results;
@@ -399,17 +435,14 @@ public class AppConfigManager {
             }
         }
 
-        if (updateMode == UpdateMode.DEFAULT_LOAD) {
-
-            results = cameraManager.updateTransportSocket(preparedSocket);
-
-            if (!results.getErrors().isEmpty()) {
-                return results;
-            }
-
+        if (updateMode == UpdateMode.FIRST_LAUNCH){
+            gui.rebuildPanels();
         }
 
-        if (deploymentRequired) {
+        if (runtimeValidation) {
+
+            //DEBUG
+            System.out.println("Runtime validation triggered.");
 
             if (transportChanged) {
                 results = cameraManager.updateTransportSocket(preparedSocket);
@@ -431,18 +464,45 @@ public class AppConfigManager {
     public void refreshAfterReconfiguration() {
 
         if (gui != null) {
+            //DEbug
+            System.out.println("Refresh GUI");
             gui.reloadConfiguration();
+            gui.rebuildPanels();
         }
 
         if (core != null) {
             core.reconfigurePanels();
             core.syncInterface();
         }
-
     }
 
     public AppConfig getConfig() {
         return this.config;
+    }
+
+    private boolean isConfigurationStructureValid(AppConfig config){
+
+        if (config == null) {
+            return false;
+        }
+
+        if (config.getSystem() == null) {
+            return false;
+        }
+
+        if (config.getSystem().getTransport() == null) {
+            return false;
+        }
+
+        if (config.getSystem().getMidi() == null) {
+            return false;
+        }
+
+        if (config.getSystem().getCameras() == null) {
+            return false;
+        }
+
+        return true;
     }
 
     public static List<MidiDeviceInfo> getMidiDevices() {

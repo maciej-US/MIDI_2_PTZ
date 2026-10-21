@@ -10,6 +10,7 @@ import uci.midi2ptz.ptz.PTZCameraManager;
 
 import javax.sound.midi.MidiDevice;
 import javax.sound.midi.MidiSystem;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -21,6 +22,8 @@ public class Midi2PTZ {
         //TODO: Splash SCREEN
 
         // ======= GENRAL CONFIG =============
+
+         initializeApplicationFolders();
 
          Path configDir = Paths.get("config");
 
@@ -42,6 +45,10 @@ public class Midi2PTZ {
          configManager.setMidiManager(midiManager);
 
          ConfigurationUpdateResults results = configManager.loadOrCreateDefault();
+         System.out.println("Config loaded = " + (configManager.getConfig() != null));
+
+         System.out.println(results);
+
          if (!results.getErrors().isEmpty()){
             System.err.println((results));
         }
@@ -61,7 +68,6 @@ public class Midi2PTZ {
 
          gui.setCameraManager(cameraManager);
          new Thread(gui).start();
-         //gui.run();
 
          // ================= RUNTIME MODE =================
 
@@ -116,13 +122,12 @@ public class Midi2PTZ {
 
         configManager.setGui(gui);
 
-        cameraManager.reconfigureCameras();
+        //results = cameraManager.reconfigureCameras();
+
         core.syncInterface();
 
+        gui.rebuildPanels();
         gui.refreshStatusInfo();
-
-        //SCAFF
-        //midiManager.getMidiController().clearPanel(ControlPanelId.B);
 
         return results;
     }
@@ -144,5 +149,18 @@ public class Midi2PTZ {
             }
 
         return false;
+    }
+
+    private static void initializeApplicationFolders() {
+
+        try {
+            Files.createDirectories(Paths.get("config"));
+            Files.createDirectories(Paths.get("logs"));
+            Files.createDirectories(Paths.get("presets"));
+
+        } catch (IOException e) {
+            throw new RuntimeException(
+                    "Unable to create application directories", e);
+        }
     }
 }

@@ -669,7 +669,7 @@ public class SettingsDialog extends JDialog {
 
         AppConfig config = buildConfiguration();
 
-        AppConfigManager.UpdateMode mode = gui.isFirstLaunch() ? AppConfigManager.UpdateMode.INITIAL_COMMIT : AppConfigManager.UpdateMode.COMMIT;
+        AppConfigManager.UpdateMode mode = gui.isFirstLaunch() ? AppConfigManager.UpdateMode.INITIAL_LOAD : AppConfigManager.UpdateMode.COMMIT;
 
         ConfigurationUpdateResults result = configManager.updateConfiguration(config, mode);
 

@@ -137,7 +137,7 @@ public class ControlCore {
     public void start() {
 
         //DEBUG
-        //System.out.println ("CAMERA PANELES ASSIGNEMENTS\n" + panels);
+        System.out.println ("CAMERA PANELES ASSIGNEMENTS\n" + panels);
 
         if (mode != RunMode.NO_HARDWARE && midiController != null) {
             midiController.start();

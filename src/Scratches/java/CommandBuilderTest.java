@@ -1,6 +1,5 @@
-package uci.midi2ptz.visca;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
+import uci.midi2ptz.visca.ViscaConfig;
 
 import java.io.File;
 import java.net.DatagramPacket;

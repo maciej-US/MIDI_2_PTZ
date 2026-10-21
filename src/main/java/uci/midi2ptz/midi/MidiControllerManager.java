@@ -61,8 +61,7 @@ public class MidiControllerManager {
 
     private boolean isConfigured() {
 
-        AppConfig.MidiConfig midi =
-                configManager
+        AppConfig.MidiConfig midi = configManager
                         .getConfig()
                         .getSystem()
                         .getMidi();
