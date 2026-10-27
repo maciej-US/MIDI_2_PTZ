@@ -1,18 +1,47 @@
 package uci.midi2ptz.gui;
 
+import lombok.Setter;
+
 import javax.swing.*;
 import java.awt.*;
 
+/**
+ * Lightweight custom button component styled to resemble a physical hardware control panel button.
+ *
+ * <p>The component provides a simple click callback mechanism, custom rendering and visual pressed-state feedback.</p>
+ *
+ * <p>This control is primarily intended for compact PTZ control panel interfaces where standard Swing buttons do not match
+ * the desired visual appearance.</p>
+ /**
+ * Custom Swing button inspired by broadcast and PTZ control panel hardware.
+ *
+ * <p>The component mimics the appearance and behavior of a physical control surface button, including visual press feedback and fixed dimensions.</p>
+ */
 public class Button extends JComponent {
 
+    /**
+     * Text displayed on the button face.
+     */
     private final String label;
 
+    /**
+     * Action executed when the button is clicked.
+     */
+    @Setter
     private Runnable onClick;
+
+    /**
+     * Indicates whether the button is currently pressed.
+     */
     private boolean pressed = false;
 
     private static final Color BORDER = new Color(0, 0, 0);
     private static final Color TEXT = Color.BLACK;
 
+    /**
+     * Creates a custom button with the specified label.     *
+     * @param label button caption
+     */
     public Button(String label) {
 
         this.label = label;
@@ -53,10 +82,9 @@ public class Button extends JComponent {
         });
     }
 
-    public void setOnClick(Runnable onClick) {
-        this.onClick = onClick;
-    }
-
+    /**
+     * Executes the registered click handler.
+     */
     private void fireClick() {
 
         if (onClick != null) {
@@ -79,6 +107,14 @@ public class Button extends JComponent {
         return new Dimension(45, 20);
     }
 
+    /**
+     * Renders the button appearance.
+     *
+     * <p>The button is drawn using a custom gradient background, rounded borders and centered label text.</p>
+     * <p>When the button is pressed, the entire component is slightly translated to simulate mechanical movement.</p>
+     *
+     * @param g graphics context
+     */
     @Override
     protected void paintComponent(Graphics g) {
 

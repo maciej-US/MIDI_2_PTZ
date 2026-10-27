@@ -7,7 +7,7 @@ import uci.midi2ptz.config.AppConfig;
 import uci.midi2ptz.config.AppConfigManager;
 import uci.midi2ptz.config.ConfigurationUpdateResults;
 import uci.midi2ptz.core.*;
-import uci.midi2ptz.core.ControlCore.ControlPanelId;
+import uci.midi2ptz.core.MainControlCore.ControlPanelId;
 import uci.midi2ptz.midi.MidiControllerManager;
 import uci.midi2ptz.ptz.PTZCamera;
 import uci.midi2ptz.ptz.PTZCameraManager;
@@ -21,7 +21,7 @@ import java.util.EnumMap;
 import java.util.Map;
 
 
-public class MainGUI implements Runnable, ControlEventListener {
+public class MainGUI implements Runnable{
 
 
     // ==================== GUI ELEMENTS ====================
@@ -48,7 +48,7 @@ public class MainGUI implements Runnable, ControlEventListener {
     @Getter
     private boolean shuttingDown = false;
 
-    private final Map<ControlCore.ControlPanelId, GUIPanel> panels = new EnumMap<>(ControlCore.ControlPanelId.class);
+    private final Map<MainControlCore.ControlPanelId, GUIPanel> panels = new EnumMap<>(MainControlCore.ControlPanelId.class);
 
     public MainGUI(ControlEventBus outputBus, AppConfigManager configManager, MidiControllerManager midiManager, boolean firstLaunch) {
         this.configManager = configManager;
@@ -59,34 +59,18 @@ public class MainGUI implements Runnable, ControlEventListener {
 
     //============= GUI API METHODS =====================
 
-    @Override
-    public void onControlEvent(ControlEvent event) {
-
-        if (!initialized || shuttingDown) {
-            return;
-        }
-        SwingUtilities.invokeLater(() -> handleControlEvent(event));
-    }
-
     public void handleControlEvent(ControlEvent event) {
 
-        //DEBUG:
-        //System.out.println("======== MAIN GUI ============= \nhandleControlEvent: " + event);
-
         GUIPanel panel = panels.get(event.getPanel());
-
-        //DEBUG
-        //System.out.println("GUI ROUTE: " + event.getAction() + " -> PANEL " + event.getPanel());
 
         if (panel != null && event.getAction().equalsIgnoreCase("UPDATE_CAMERA_STATUS"))  {
             refreshStatusInfo(event.getPanel());
         }
 
         if (panel != null) {
-            panel.handleControlEvent(event);
+            panel.updateFromEvent(event);
         }
     }
-
 
     // ==================== RUN ====================
 
@@ -197,9 +181,6 @@ public class MainGUI implements Runnable, ControlEventListener {
         frame.setLocationRelativeTo(null);
 
         frame.setVisible(true);
-
-        //DEBUG
-        //System.out.println("GUI Initialized");
 
         initialized = true;
 
@@ -315,8 +296,6 @@ public class MainGUI implements Runnable, ControlEventListener {
     public void refreshPanelBindings() {
 
         for (GUIPanel panel : panels.values()) {
-            //DEBUG
-            //System.out.println("MIDI DSPL VALUE" + String.valueOf(midiManager.getMidiBinding(panel.panelId)));
             ControlPanelId midiBinding = midiManager.getMidiBinding(panel.panelId);
             panel.getMidiPanelInfo().setValue(
                     midiBinding == null ?

@@ -172,10 +172,6 @@ public class RotarySwitch extends JComponent {
                     lx += LABEL_OFFSETS_6L[i][0];
                     ly += LABEL_OFFSETS_6L[i][1];
                 }
-
-                //debug
-                //System.out.println("Label " + i + " - [" + label + "]" + "x = " + lx + "  y = " + ly);
-
                 if (selected) {
                     g2.setColor(new Color(255, 220, 80));
                     g2.setFont(g2.getFont().deriveFont(Font.BOLD, 11f));

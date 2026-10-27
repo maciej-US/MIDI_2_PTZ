@@ -148,15 +148,11 @@ public class JogIndicator extends JComponent {
 
     public void setValueSilently(int value) {
 
-        //DEBUG:
-        //System.out.println ("======= JOG CLASS ========== \n Received VAL = " + value);
         suppressEvent = true;
 
         int direction = Integer.compare(value, 0);
         int speed =Math.abs(value);
 
-        //DEBUG
-        //System.out.println("JOG SILENT dir=" + direction + " speed=" + speed);
         setJog(direction, speed);
 
         suppressEvent = false;

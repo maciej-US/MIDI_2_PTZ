@@ -1,7 +1,7 @@
 package uci.midi2ptz.gui;
 
 
-import uci.midi2ptz.core.ControlCore;
+import uci.midi2ptz.core.MainControlCore;
 import uci.midi2ptz.core.ControlEvent;
 import uci.midi2ptz.core.ControlEventBus;
 import uci.midi2ptz.core.ControlEventListener;

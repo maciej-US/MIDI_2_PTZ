@@ -14,39 +14,90 @@ import java.util.logging.Logger;
 
 
 /**
- * Configurable VISCA PTZ controller, based on camera configuration and commands syntax from JSON data file.
+ * Configurable VISCA-over-IP camera controller.
+ *
+ * <p>This class provides a protocol-independent PTZ camera control  layer driven entirely by external VISCA configuration files.</p>
+ *
+ * <p>It translates high-level camera operations into VISCA protocol messages, manages VISCA-over-IP transport packets and synchronizes
+ * camera state with the application runtime.</p>
+ *
+ * <h2>Responsibilities</h2> *
+ * <ul>
+ *     <li>VISCA command execution</li>
+ *     <li>VISCA inquiry processing</li>
+ *     <li>VISCA-over-IP packet wrapping</li>
+ *     <li>Camera parameter synchronization</li>
+ *     <li>Protocol response decoding</li>
+ *     <li>Connection health monitoring</li>
+ * </ul>
+ *
+ * <h2>Architecture</h2> *
+ * <pre>
+ * ControlCore
+ *      |
+ *      v
+ * PTZCamera
+ *      |
+ *      v
+ * ViscaPTZController
+ *      |
+ *      v
+ * ViscaCommandBuilder
+ *      |
+ *      v
+ * VISCA-over-IP
+ *      |
+ *      v
+ * Camera
+ * </pre>
  */
+
 public class ViscaPTZController {
 
     private final ViscaCommandBuilder commandBuilder;
     private static final Logger LOGGER = Logger.getLogger(ViscaPTZController.class.getName());
+    /**
+     * Timeout used while waiting for VISCA inquiry responses from the camera.
+     */
     private final long RESPONSE_TIMEOUT;
 
     //Camera <=> controller connection>
     private final PTZCamera camera;
-    private PTZCameraManager cameraManager;
-
-    //Visca payloads and wrapping templates
-    private final Map<String, byte[]> udpTemplate = new LinkedHashMap<>();
-    private final Map<String, byte[]> viscaPayloadType = new LinkedHashMap<>();
-    private final int payloadOffset;
-
-    private static final Object viscaLock = new Object();
+    private final PTZCameraManager cameraManager;
 
     /**
-     * Controller class constructor
-     *
-     * @param config plik konfiguracyjny VISCA (JSON)
+     * Mapping between logical transport packet types and binary VISCA-over-IP packet headers.
      */
+    private final Map<String, byte[]> udpTemplate = new LinkedHashMap<>();
+    private final Map<String, byte[]> viscaPayloadType = new LinkedHashMap<>();
 
+    /**
+     * Number of transport header bytes preceding the VISCA payload within received packets.
+     */
+    private final int payloadOffset;
+
+    /**
+     * Global VISCA protocol lock.
+     *
+     **<p>Ensures that multi-packet VISCA transactions are executed sequentially.</p>
+     */
+    private static final Object viscaLock = new Object();
+
+
+    /**
+     * Creates a VISCA controller for the specified camera.
+     *
+     * @param camera associated camera instance
+     * @param config VISCA protocol definition
+     * @param responseTimeout response timeout in milliseconds
+     */
     public ViscaPTZController(PTZCamera camera, ViscaConfig config, long responseTimeout) {
-        //podłączenie kamery i CommandBuildera
+
         this.commandBuilder = new ViscaCommandBuilder(config);
         this.camera = camera;
         this.cameraManager = camera.getCameraManager();
         this.RESPONSE_TIMEOUT = responseTimeout;
 
-        //Wczytanie formatek pakietów UDP i typó komuynikatów VISCA
         Map<String, Object> transport = commandBuilder.getConfig().getTransport();
         Map<String, Object> packetType = (Map<String, Object>) transport.get("packetType");
         Map<String, Object> payloadSize = (Map<String, Object>) transport.get("payloadSize");
@@ -59,28 +110,19 @@ public class ViscaPTZController {
         this.payloadOffset = udpTemplate.get("type").length + udpTemplate.get("payloadLength").length + udpTemplate.get("sequence").length;
 
 
-        Map<String, Object> types = (Map<String, Object>)
-                        ((Map<String, Object>)
-                                transport.get("packetType"))
-                                .get("types");
+        Map<String, Object> types = (Map<String, Object>)((Map<String, Object>)transport.get("packetType")).get("types");
 
-        types.forEach((name, definition) ->
-                viscaPayloadType.put(
+        types.forEach((name, definition) ->viscaPayloadType.put(
                         name,
                         parseByteArray((List<String>) definition)
                 )
         );
-
-        //INITIAL STATUS
     }
 
-    /* ===================================================
-           COMMUNICATION AND VISCA COMMANDS HANDLING
-       ===================================================*/
-
-
-    /** Parameterless VISCA command execution
-     * @param commandName
+    /**
+     * Executes a parameterless VISCA command.
+     *
+     * @param commandName logical command name
      */
     public void executeViscaCommand(String commandName) {
 
@@ -90,15 +132,16 @@ public class ViscaPTZController {
 
         } catch (Exception e) {
             System.err.println("VISCA command failed: " + commandName);
-            e.printStackTrace();
         }
     }
 
     /**
-     *  Parametric VISCA command execution
-     * @param commandName
-     * @param parameters - mapa <String, Object> zawierająca parametry wywołania
-     * @return
+     * Executes a parameterized VISCA command.
+     *
+     * <p>Command parameters are encoded according to the field definitions contained in the VISCA configuration.</p>
+     *
+     * @param commandName logical command name
+     * @param parameters command parameters
      */
     public void executeViscaCommand(String commandName, Map<String, Object> parameters) {
 
@@ -106,19 +149,17 @@ public class ViscaPTZController {
             byte[] command = commandBuilder.buildCommand(commandName, parameters);
             sendViscaCommand(command,"command");
 
-            //DEBUG:
-            //System.out.println("========= CONTROLLER VISCA =========\nTX: " + bytesToHex(command, command.length));
-
         } catch (Exception e) {
             System.err.println("VISCA command failed: " + commandName);
-            e.printStackTrace();
         }
     }
 
     /**
-     *  Execution of VISCA status inquires
-     * @param commandName
-     * @return byte array containing VISCA response payload or null if no response received
+     * Executes a VISCA inquiry request.
+     *
+     * <p>The method waits for a completion response and returns the received VISCA payload.</p>
+     * @param commandName inquiry command name
+     * @return VISCA response payload or {@code null}
      */
     private byte[] executeViscaInquiry(String commandName) {
 
@@ -152,9 +193,6 @@ public class ViscaPTZController {
                     continue;
                 }
                 if ((viscaPayload[0] & 0xFF) == 0x90 && (viscaPayload[1] & 0xF0) == 0x50){
-                    //DEBUG:
-                    //System.out.println("Received Payload:"  + bytesToHex(viscaPayload, viscaPayload.length));
-
                     return viscaPayload;
                 }
             }
@@ -164,6 +202,13 @@ public class ViscaPTZController {
         return null;
     }
 
+    /**
+     * Wraps a VISCA payload into a VISCA-over-IP packet.
+     *
+     * <p>The resulting packet includes transport headers, payload length information and a protocol sequence number.</p>     *
+     * @param viscaPayload raw VISCA command payload @param type transport packet type     *
+     * @return complete VISCA-over-IP packet
+     */
     private byte[] wrapViscaPayload(byte[] viscaPayload, String type) {
 
         byte [] commandType = viscaPayloadType.get(type);
@@ -174,7 +219,7 @@ public class ViscaPTZController {
 
         byte[] typeBytes = udpTemplate.get("type");
 
-        // obliczanie długości pakietu
+        // Packet size calculation
         int packetSize =
                 udpTemplate.get("type").length +
                 udpTemplate.get("payloadLength").length +
@@ -191,7 +236,7 @@ public class ViscaPTZController {
                 0,
                 typeBytes.length);
 
-        // Obliczanie i dodawania payloadSize
+        // Payload size and append
         int payloadLength = viscaPayload.length;
 
         int payloadSizeOffset = udpTemplate.get("type").length;
@@ -210,11 +255,6 @@ public class ViscaPTZController {
 
          // Sequence Number
         int sequence = camera.getViscaSessionID();
-
-        //DEBUG:
-       /* System.out.println("========== VISCA command wrapper ==========");
-        System.out.println("New session = " + sequence);
-        System.out.println("CALLER = " + Thread.currentThread().getStackTrace()[2]);*/
 
         int sequenceOffset =  udpTemplate.get("type").length + udpTemplate.get("payloadLength").length;
 
@@ -243,20 +283,18 @@ public class ViscaPTZController {
                 payloadOffset,
                 viscaPayload.length
         );
-
-        //DEBUG:
-        //System.out.println("UDP Pakiet send: " + bytesToHex(packet, packet.length));
-
         return packet;
     }
 
     /**
-     * Wysyła komendę VISCA w formacie VISCA-over-UDP do kamery.
+     * Sends a VISCA command using the configured VISCA-over-IP transport protocol.
      *
-     * Opakowuje payload VISCA w nagłówek AVer UDP (8 bajtów) i wysyła pakiet.
+     * <p>The supplied VISCA payload is wrapped in the transport-specific packet header prior to transmission.</p>
      *
-     * @param viscaPayload tablica bajtów zawierająca komendę VISCA (bez nagłówka UDP)
-     * @param type typ komendy (inquiry/command)
+     * @param viscaPayload raw VISCA payload
+     * @param type packet type such as {@code command} or {@code inquiry}
+     *
+     * @return pending packet tracker or {@code null}
      */
     public PendingPacket sendViscaCommand(byte[] viscaPayload, String type) {
 
@@ -291,10 +329,13 @@ public class ViscaPTZController {
         return null;
     }
 
-     /* =====================================
-            CAMERA STATE SYNCHRONIZATION
-       =====================================*/
-
+    /**
+     * Synchronizes pan and tilt position information from the physical camera.
+     *
+     * <p>The received VISCA values are decoded and converted into application-level angular coordinates.</p>
+     *
+     * @return {@code true} if synchronization succeeded
+     */
     public boolean syncPosition() {
 
         try {
@@ -328,33 +369,22 @@ public class ViscaPTZController {
                     int currentValue = 0;
                     int length = encoding.getSegments().size();
                     for (int i = 0; i < length; i++){
-                        //DEBUG:
-                        //System.out.println("token: "+ token + "    | Response " + bytesToHex(response, response.length));
                         currentValue = (currentValue << 4) | (response[responseOffset + i] & 0x0F);
                     }
                     responseOffset += length;
-                    //DEBUG:
-                    //System.out.println("Decoded " + token + " = " + currentValue);
 
                     decodedValues.put(token.substring(1, token.length() -1), currentValue);
 
                 }
             }
 
-            //DEBUG:
-            //System.out.println("Receiveid PAN/TILT position" + decodedValues.toString());
-
             int panVisca = decodedValues.get("panPosition");
             int tiltVisca = decodedValues.get("tiltPosition");
-
 
             FieldDefinition panField = getFieldDefinition("panPosition");
             Map<String, Object> panMapping = panField.getMapping();
             Map<String, Object> panDeviceRange = (Map<String, Object>) panMapping.get("deviceRange");
             Map<String, Object> panRange = (Map<String, Object>) panMapping.get("mechanicalRange");
-
-            //DEBUG:
-            //System.out.println("PAN RANGE = " + panDeviceRange);
 
             int positivePanLimit = Integer.parseInt((String) panDeviceRange.get("positiveLimit"), 16);
             int negativePanLimit = Integer.parseInt((String) panDeviceRange.get("negativeLimit"), 16);
@@ -374,9 +404,6 @@ public class ViscaPTZController {
             Map<String, Object> tiltMapping = tiltField.getMapping();
             Map<String, Object> tiltDeviceRange = (Map<String, Object>) tiltMapping.get("deviceRange");
 
-            //DEBUG
-            //System.out.println("TILT RANGE = " + tiltDeviceRange);
-
             Map<String, Object> tiltRange = (Map<String, Object>) tiltMapping.get("mechanicalRange");
             int positiveTiltLimit = Integer.parseInt((String) tiltDeviceRange.get("upLimit"), 16);
             int negativeTiltLimit = Integer.parseInt((String) tiltDeviceRange.get("downLimit"), 16);
@@ -392,26 +419,28 @@ public class ViscaPTZController {
             }
             camera.getParameter("tiltPosition").setCurrent(tiltDegrees);
 
-            //DEBUG:
-            //System.out.println("Camera position updated: PAN DEG: " + panDegrees + " | hex: " + panVisca + "    TILT DEG: " + tiltDegrees + "  |  hex: " + tiltVisca);
             return true;
 
         } catch (Exception e) {
-            System.out.println("SYNC POSITION ERROR");
-            e.printStackTrace();
+            System.out.println("SYNC POSITION ERROR: " + e.getMessage());
             return false;
         }
     }
 
+    /**
+     * Synchronizes a camera parameter with its current value reported by the device.
+     *
+     * @param parameterName parameter identifier
+     * @return {@code true} if synchronization succeeded
+     */
     public boolean parameterInquiry(String parameterName) {
 
         try {
-            //Wywołanie pan/tilt - wariant nietypowy
+            //PAN or TILT position - protocol specific call
             if ("panPosition".equals(parameterName) ||
                     "tiltPosition".equals(parameterName)) {
                 return syncPosition();
             }
-
             return executeParameterInquiry(parameterName);
 
         } catch (Exception e) {
@@ -420,9 +449,14 @@ public class ViscaPTZController {
         }
     }
 
-
+    /**
+     * Executes a generic VISCA parameter inquiry and updates the local parameter cache.
+     *
+     * @param parameterName parameter identifier
+     * @return {@code true} if a valid response was received
+     */
     private boolean executeParameterInquiry(String parameterName){
-        //Sprawdzenie definicji inquiry
+
         CommandDefinition inquiry = commandBuilder.getCommand(parameterName);
 
         if (inquiry == null) {
@@ -432,14 +466,10 @@ public class ViscaPTZController {
 
         byte[] response = executeViscaInquiry(parameterName);
 
-        //debug:
-        //System.out.println("Controler parameterInquiry RX: " + bytesToHex(response, response.length));
-
         if (response == null || response.length < 4) {
             LOGGER.warning("Invalid " + parameterName + " inquiry response." +
             "\nReceived response:" + ((response ==null) ? "null" : bytesToHex(response, response.length)));
-            //DEBUG:
-            System.out.println("CAMERA " + camera.getCameraId() + " SET OFFLINE.");
+            LOGGER.info("CAMERA " + camera.getCameraId() + " SET OFFLINE.");
             camera.markOffline();
             cameraManager.notifyCameraStatusChanged(camera, false);
             return false;
@@ -450,14 +480,9 @@ public class ViscaPTZController {
                 && (response[1] & 0xFF) == 0x51
                 && (response[2] & 0xFF) == 0xFF) {
 
-            LOGGER.fine(
-                    "Ignoring VISCA status response: "
-                            + bytesToHex(response, response.length)
-            );
+            LOGGER.fine("Ignoring VISCA status response: " + bytesToHex(response, response.length));
             return false;
         }
-
-        // Pobranie definicji pola
 
         FieldDefinition field = getFieldDefinition(parameterName);
 
@@ -465,8 +490,6 @@ public class ViscaPTZController {
             LOGGER.warning("Invalid " + parameterName + " field definition.");
             return false;
         }
-
-        // Dekodowanie odpowiedzi VISCA
         List<String> responseTemplate = commandBuilder.getCommand(parameterName).getResponseTemplate();
 
         if (responseTemplate == null || responseTemplate.isEmpty()) {
@@ -488,14 +511,6 @@ public class ViscaPTZController {
             LOGGER.warning("Invalid " + parameterName + " response field definition.");
             return false;
         }
-
-        //debug
-        //System.out.println("FIELD INDEX = " + fieldIndex + "  response size = " + responseTemplate.size());
-
-
-//        for (int i = 0; i < field.getEncoding().getSegments().size(); i++) {
-//            System.out.println("RESP[" + (fieldIndex  + i) + "] = " + String.format("%02X",response[fieldIndex + i]));
-//        }
 
         long currentValue = 0;
         EncodingDefinition encoding = field.getEncoding();
@@ -523,9 +538,6 @@ public class ViscaPTZController {
         String mappingType = (String)mapping.get("type");
         Map<String, Object> values = (Map<String, Object>) field.getMapping().get("values");
 
-        //Debug
-        //System.out.println("Mapping values:\n" + values.toString());
-
         switch (mappingType.toLowerCase()) {
 
             //--- lookup-type map parsing + nearest match
@@ -535,7 +547,7 @@ public class ViscaPTZController {
                     return false;
                 }
 
-                Long nearestDistance = Long.MAX_VALUE;
+                long nearestDistance = Long.MAX_VALUE;
                 String nearestKey = null;
 
                 long minValue = Long.MAX_VALUE;
@@ -546,9 +558,6 @@ public class ViscaPTZController {
 
                 for (Map.Entry<String, Object> entry : values.entrySet()) {
                     long lookupValue = ((Number) entry.getValue()).longValue();
-
-                    //DEBUG
-                    //System.out.println("lookup value = " + lookupValue + " Current value = " + currentValue);
 
                     // Exact match
                     if (lookupValue == currentValue) {
@@ -586,8 +595,6 @@ public class ViscaPTZController {
                     } else {
                         currentValue = Long.parseLong(nearestKey);
                     }
-                    //DEBUG
-                    //System.out.println("Lookup correction: raw=" + currentValue + " mapped=" + nearestKey);
                 }
                 break;
 
@@ -597,8 +604,6 @@ public class ViscaPTZController {
                     LOGGER.log(Level.WARNING, "No lookup mapping found for " + parameterName);
                     return false;
                 }
-                //Debug
-                //System.out.println("Mapping values:\n" + values.toString() + "current value: " + currentValue);
 
                 String enumValue = (String)values.get(String.format("%02X", currentValue));
 
@@ -635,7 +640,7 @@ public class ViscaPTZController {
                 }
         }
 
-        // Aktualizacja stanu w ParameterState kamery
+        // ParameterState update in camera parameters
 
         ParameterState state = camera.getParameters().get(parameterName);
 
@@ -650,13 +655,16 @@ public class ViscaPTZController {
             state.setMin(((Number) field.getMapping().get("mappedMin")).doubleValue());
             state.setMax(((Number) field.getMapping().get("mappedMax")).doubleValue());
         }
-        //camera.markOnline();
-        //cameraManager.notifyCameraStatusChanged(camera, true);
-        //DEBUG:
-        //System.out.println("CAMERA " + camera.getCameraId() + " SET ONLINE.");
         return true;
     }
 
+    /**
+     * Requests the current camera power state.
+     *
+     * <p>The resulting value is converted into the internal {@link ParameterState} representation.</p>
+     *
+     * @return {@code true} if a valid power state response was received
+     */
     public boolean powerStatusRequest() {
 
         try {
@@ -724,11 +732,17 @@ public class ViscaPTZController {
         }
     }
 
+    /**
+     * Updates the camera online/offline status based on communication results.
+     *
+     * @param pending pending packet tracker
+     *
+     * @throws InterruptedException if interrupted while waiting
+     */
     private void updateCameraStatus(PendingPacket pending) throws InterruptedException {
 
         if (pending.waitForResponse(RESPONSE_TIMEOUT)) {
             camera.markOnline();
-            //cameraManager.notifyCameraStatusChanged(camera, true);
         } else {
             camera.markOffline();
             cameraManager.notifyCameraStatusChanged(camera, false);
@@ -757,26 +771,22 @@ public class ViscaPTZController {
         }
     }
 
-    /* ====================================================
-                    CAMERA MOVEMENT HANDLERS
-        =================================================== */
-
+    /**
+     * Moves the camera to an absolute pan/tilt position.
+     *
+     * @param panValue target pan angle
+     * @param tiltValue target tilt angle
+     * @param speed movement speed
+     */
     public void moveAbsolute(double panValue, double tiltValue, int speed) {
-
-        //SCAFF
-        //System.out.println("moveAbsolute - Received values: PAN " + panValue + "  |  TILT " + tiltValue + "  | SPEED " + speed);
 
         PTZCamera camera = this.camera;
 
         synchronized (viscaLock) {
 
-            //ograniczniki zakresów do sprzętu
-
+            //Hardware limiters
             double clampeddPan = camera.clampPan(panValue);
             double clampedTilt = camera.clampTilt(tiltValue);
-
-            //SCAFF
-            //System.out.println("moveAbsolute - Used values: PAN " + boundedPan + "  |  TILT " + boundedTilt);
 
             try {
                 Map<String,Object> params =
@@ -796,33 +806,24 @@ public class ViscaPTZController {
                 camera.getParameter("tiltPosition").setCurrent(clampedTilt);
 
             } catch (Exception e) {
-
-                LOGGER.log(
-                        Level.SEVERE,
-                        "MOVE ABS ERROR",
-                        e
-                );
+                LOGGER.log(Level.SEVERE, "MOVE ABS ERROR", e.getMessage());
             }
         }
     }
 
     /**
-     *  Ruch PAN/TILT w trybie Joystick
+     * Starts relative pan/tilt movement.
+     *
+     * <p>Joystick values are converted into VISCA speed and direction parameters.</p>
+     *
+     * @param panValue pan control value
+     * @param tiltValue tilt control value
      */
-
     public void movePanTilt(int panValue, int tiltValue) {
-
-        //SCAFF
-       // System.out.println("movePanTilt - Received values: PAN " + panValue + "  |  TILT " + tiltValue);
-       /* if (panValue == 0 && tiltValue == 0){
-            System.out.println("movePanTilt - STOP REQUEST");
-            camera.stop();
-        }*/
-        //System.out.println("Controller hash = " + System.identityHashCode(this));
 
         Map<String, Object> params = new HashMap<>();
 
-        // przeliczenie prędkości do pamaterów kamery
+        // Speed to camera params recalculation
         FieldDefinition panSpeedField = commandBuilder.getField("panSpeed");
         Map<String, Object> range = panSpeedField.getRange();
         int minSpeed = ((Number)range.get("min")).intValue();
@@ -830,11 +831,10 @@ public class ViscaPTZController {
         int panSpeed = minSpeed + (int) Math.round((Math.abs(panValue) / 64.0) * (maxSpeed - minSpeed));
         int tiltSpeed = minSpeed + (int) Math.round((Math.abs(tiltValue) / 64.0) * (maxSpeed - minSpeed));
 
-        //ustalenie kierunku kierunek ruchu, wartość 64 = neutralna
+        //direction setting; 64 = neutral
         int panDirection = panValue > 0 ? 0x02 : panValue < 0 ? 0x01 : 0x03;
         int tiltDirection = tiltValue > 0 ? 0x01 : tiltValue < 0 ? 0x02 : 0x03;
 
-        //parametry dla commandBuildera i budowa payload VISCA
         params.put("panSpeed", panSpeed);
         params.put("tiltSpeed", tiltSpeed);
         params.put("panDirection", panDirection);
@@ -847,22 +847,22 @@ public class ViscaPTZController {
     }
 
     /**
-     * Zatrzymaj ruch PAN i TILT.
+     * Stops all active pan and tilt movement.
      */
     public void stopPanTilt() {
-
         executeViscaCommand("stopPanTilt");
     }
 
-    /** Park camera in home position*/
+    /**
+     * Moves the camera to its configured home position.     */
+
     public void ptzHomePosition(){
         executeViscaCommand("ptzHomePosition");
     }
 
     /**
-     * Sterowanie ZOOM kamerą
-     *
-     * @param zoomValue wartość pozycji ZOOM
+     * Moves zoom to an absolute position.
+     * @param zoomValue target zoom position
      */
     public void moveZoomAbsolute(int zoomValue) {
 
@@ -871,19 +871,14 @@ public class ViscaPTZController {
             params.put("zoomPosition", zoomValue);
             executeViscaCommand("absoluteZoom",params);
 
-            //DEBUG
-           // System.out.println("ZOOM ABS = " + zoomValue);
-            LOGGER.fine("ZOOM ABS = " + zoomValue);
-
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "ZOOM command error",e);
         }
     }
 
     /**
-     * Sterowanie ZOOM kamerą
-     *
-     * @param focusValue wartość pozycji ZOOM
+     * Moves focus to an absolute position.
+     * @param focusValue target focus position
      */
     public void moveFocusAbsolute(int focusValue) {
 
@@ -892,53 +887,22 @@ public class ViscaPTZController {
             params.put("focusPosition", focusValue);
             executeViscaCommand("absoluteFocus",params);
 
-            //DEBUG
-             System.out.println("FOCUS ABS = " + focusValue);
-            LOGGER.fine("FOCUS ABS = " + focusValue);
-
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "FOCUS command error",e);
         }
     }
 
-
     /**
-     * Wznowienie zapisanego presetu kamery.
-     *
-     * @param presetName nazwa presetu według mapowania w konfiguracji kamety
+     * Recalls a previously stored camera preset.     *
+     * @param presetName logical preset name defined in the VISCA configuration
      */
     public void recallPreset(String presetName) {
 
         try {
             FieldDefinition presetField = getFieldDefinition("presetId");
 
-
-            //DEBUG
-            /*System.out.println(
-                    presetField.getMapping()
-            );
-
-            System.out.println(
-                    presetField.getMapping()
-                            .get(presetName)
-                            .getClass()
-            );
-
-            System.out.println(
-                    "presetName=[" + presetName + "]"
-            );
-
-            for (String key : presetField.getMapping().keySet()) {
-
-                System.out.println(
-                        "key=[" + key + "]"
-                );
-            }
-*/
             Object mappedValue = presetField.getMapping().get(presetName);
 
-          /*  System.out.println(mappedValue.toString());
-*/
             if (mappedValue == null) {
                 throw new IllegalArgumentException("Unknown preset Name: " + presetName);
             }
@@ -959,15 +923,23 @@ public class ViscaPTZController {
         }
     }
 
-    /* ============================================
-           GETTERS, SETTERS, INTERNAL METHODS
-       ============================================*/
-
+    /**
+     * Returns a field definition from the active VISCA configuration.
+     *
+     * @param fieldName field name
+     * @return field definition or {@code null}
+     */
     public FieldDefinition getFieldDefinition(String fieldName) {
 
         return commandBuilder.getField(fieldName);
     }
 
+    /**
+     * Converts hexadecimal string values into a binary byte array.
+     *
+     * @param values hexadecimal values
+     * @return byte array representation
+     */
     private byte[] parseByteArray(List<String> values) {
 
         byte[] result = new byte[values.size()];
@@ -981,10 +953,15 @@ public class ViscaPTZController {
         return result;
     }
 
-    /* =====================================
-                     DEBUGGER
-       ===================================== */
-
+    /**
+     * Converts a byte array*into a hexadecimal string.
+     *
+     * <p>Intended primarily for diagnostics, debugging and protocol logging.</p>
+     *
+     * @param data source bytes
+     * @param length number of bytes to convert
+     * @return formatted hexadecimal string
+     */
     public static String bytesToHex(byte[] data, int length) {
         if (data == null) return "null";
         StringBuilder sb = new StringBuilder();
@@ -994,6 +971,4 @@ public class ViscaPTZController {
         }
         return sb.toString();
     }
-
-
 }

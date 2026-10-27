@@ -12,13 +12,72 @@ import uci.midi2ptz.visca.FieldDefinition;
 import java.util.*;
 import java.util.logging.Logger;
 
-import static uci.midi2ptz.core.ControlCore.Control.*;
-import static uci.midi2ptz.core.ControlCore.ControlPanelId.*;
+import static uci.midi2ptz.core.MainControlCore.Control.*;
+import static uci.midi2ptz.core.MainControlCore.ControlPanelId.*;
 import static uci.midi2ptz.core.ControlEvent.EventSource.*;
 
-public class ControlCore {
+/**
+ * Central application control engine.
+ *
+ * <p>MainControlCore is the primary business-logic component of the application. It receives control events from the
+ * application event bus, translates them into PTZ camera operations and publishes resulting state changes back to
+ * external listeners.</p>
+ *
+ * <p>The control core coordinates interactions between:</p> *
+ * <ul>
+ *     <li>MIDI controllers,</li>
+ *     <li>PTZ camera devices,</li>
+ *     <li>graphical user interfaces,</li>
+ *     <li>camera automation modules,</li>
+ *     <li>runtime configuration services.</li>
+ * </ul>
+ *
+ * <p>The class subscribes to user-generated events originating from GUI and MIDI components and acts as the authoritative
+ * source of application state.</p>
+ * <h2>Responsibilities</h2> *
+ * <ul>
+ *     <li>PTZ motion control</li>
+ *     <li>Focus management</li>
+ *     <li>Exposure management</li>
+ *     <li>White balance control</li>
+ *     <li>Auto-follow control</li>
+ *     <li>Tally management</li>
+ *     <li>Camera and panel assignment management</li>
+ *     <li>State synchronization</li>
+ *     <li>Event generation for GUI and MIDI feedback</li>
+ * </ul>
+ *
+ * <h2>Event Flow</h2>
+ *
+ * <pre>
+ * MIDI Controller ----\
+ *                      \
+ *                       v
+ *                  Event Bus
+ *                       |
+ *                       v
+ *                 MainControlCore
+ *                       |
+ *          +------------+------------+
+ *          |                         |
+ *          v                         v
+ *      PTZ Cameras            State Events
+ *                                     |
+ *                         +-----------+-----------+
+ *                         |                       |
+ *                         v                       v
+ *                        GUI               MIDI Feedback
+ * </pre>
+ *
+ * <p>MainControlCore contains no direct GUI logic and no hardware-specific MIDI logic. All communication occurs
+ * through {@link ControlEvent} instances exchanged via the {@link ControlEventBus}.</p>
+ */
+public class MainControlCore implements ControlEventListener{
 
-
+    /**
+     * Defines all logical controls supported by the application.     *
+     * <p>Each control represents a camera function or application  feature that can be manipulated via MIDI hardware, GUI components or internal automation.</p>
+     */
     public enum Control {
         TILT,
         PAN,
@@ -39,6 +98,12 @@ public class ControlCore {
         WHITE_BALANCE_B_GAIN
     }
 
+    /**
+     * Represents the runtime state of a control or control mode.
+     *
+     * <p>The interpretation of a particular state depends on the control type. For example, PTZ controls use {@code JOYSTICK} and {@code ABSOLUTE},
+     * while focus controls use {@code AUTO} and {@code MANUAL}.</p>
+     */
     public enum ModeState {
         JOYSTICK,
         ABSOLUTE,
@@ -53,19 +118,29 @@ public class ControlCore {
         IRIS_PRIORITY,
         SHUTTER_PRIORITY
     }
+
+    /**
+     * Identifies a logical control panel managed by the control core.
+     *
+     * <p>Each panel is typically associated with one PTZ camera and may be dynamically assigned to a physical MIDI controller panel.</p>
+     */
     public enum ControlPanelId {
         A,
         B,
         C,
         D,
     }
+
+    /**
+     * Defines the application runtime mode.
+     */
     public enum RunMode {
-        FULL,
-        TEST,
-        NO_HARDWARE
+        FULL,           /** Full operation with connected MIDI devices and cameras.*/
+        TEST,           /** Validation mode used for configuration testing.*/
+        NO_HARDWARE     /** Runtime mode without external hardware.*/
     }
 
-    // STANY SYSTEMU
+    // SYSTEM STATE VARIABLES
     private final Map<ControlPanelId, ControlPanel> panels = new EnumMap<>(ControlPanelId.class);
     private final RunMode mode;
     private final AppConfigManager configManager;
@@ -76,28 +151,27 @@ public class ControlCore {
     private final MidiControllerManager midiManager;
     private final MidiController midiController;
     private MainGUI gui;
+    //private Thread controlThread;
+    //private volatile boolean running;
     private final ControlEventBus inputBus;
 
-
-    // Kontrola statusu
+    // RUNTIME BEHAVIOUR
     private boolean waitingForStateSync = false;
 
     //LOGGER
-    public static final Logger LOGGER = Logger.getLogger(ControlCore.class.getName());
+    public static final Logger LOGGER = Logger.getLogger(MainControlCore.class.getName());
 
-     /*========================================
-             KONSTRUKTOR i URUCHOMIANIE
-       ========================================*/
-
-     /**
-     * Konstruktor klasy MidiToPTZ
+    /**
+     * Creates a new control engine instance.
      *
-     * @param cameraManager
-     * @param
+     * @param configManager configuration manager
+     * @param cameraManager camera management subsystem
+     * @param midiManager MIDI controller manager
+     * @param inputBus event bus used for receiving control events
+     * @param mode runtime mode
      */
-
-    public ControlCore(AppConfigManager configManager, PTZCameraManager cameraManager, MidiControllerManager midiManager,
-                       ControlEventBus inputBus, RunMode mode) {
+    public MainControlCore(AppConfigManager configManager, PTZCameraManager cameraManager, MidiControllerManager midiManager,
+                           ControlEventBus inputBus, RunMode mode) {
 
         this.configManager = configManager;
         this.cameraManager = cameraManager;
@@ -115,35 +189,25 @@ public class ControlCore {
                 );
             }
         }
+
+        inputBus.register(this);
     }
 
-
     /**
-     * Uruchamia główną pętlę sterowania systemu.
-     * Metoda inicjalizuje mapowania kontrolek MIDI, odświeża wskaźniki GUI
-     * oraz uruchamia dedykowany wątek nasłuchujący kolejki zdarzeń MIDI.
-     * Obsługiwane są dwa typy komunikatów:
-     * <ul>
-     *     <li>CC (Control Change) - wartości suwaków, enkoderów i pokręteł</li>
-     *     <li>NT (Note On/Off) - przyciski funkcyjne i przełączniki</li>
-     * </ul>
-     * Wątek pracuje w sposób ciągły przez cały czas działania aplikacji
-     * i przekazuje odebrane komunikaty do odpowiednich metod obsługi.
+     * Starts the control engine.
      *
-     * @see #handleControlEvent(ControlEvent)     *
-     * */
-
-
+     * <p>The method initializes connected subsystems, configures runtime camera states and starts the main event-processing thread.</p>
+     * <p>A dedicated worker thread continuously consumes events from the {@link ControlEventBus} and forwards them to the internal
+     * event dispatcher.</p>
+     * <p>All control processing performed by the core originates from this event loop.</p>
+     */
     public void start() {
-
-        //DEBUG
-        System.out.println ("CAMERA PANELES ASSIGNEMENTS\n" + panels);
 
         if (mode != RunMode.NO_HARDWARE && midiController != null) {
             midiController.start();
         }
 
-        //AUtomiation initial states configuration
+        //Initial states configuration
 
         for (ControlPanel panel : panels.values()){
             PTZCamera camera = cameraManager.getCoreAssignedCamera(panel.getId());
@@ -165,28 +229,31 @@ public class ControlCore {
                 camera.setFocusMode("AUTO");
             }
         }
-
-        new Thread(() -> {
-
-            while (true) {
-                try {
-                    ControlEvent event = inputBus.take();
-                    handleControlEvent(event);
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }
-
-        }, "CONTROL_CORE").start();
     }
 
      /*==========================================
                HANDLE MOVE AND PARAMS CHANGE
        ==========================================*/
 
-    private void handleControlEvent(ControlEvent event) {
+    /**
+     * Receives and processes control events from the application event bus.
+     *
+     * <p>The control core acts as the central application logic processor. GUI actions and MIDI controller input are received
+     * through the event bus and translated into PTZ camera commands, mode transitions and state synchronization events.</p>
+     *
+     * <p>Events originating from {@link ControlEvent.EventSource#SYSTEM} are ignored because they represent notifications generated by the control core
+     * itself and are intended for external listeners such as the GUI or MIDI controller.</p>
+     *
+     * @param event event received from the event bus
+     */
+    @Override
+    public void onControlEvent(ControlEvent event) {
 
         if (event == null) {
+            return;
+        }
+
+        if (event.getEventSource() == SYSTEM){
             return;
         }
 
@@ -228,8 +295,7 @@ public class ControlCore {
         int value = coreEvent.getValue();
         String action = coreEvent.getAction();
 
-        /* Synchronizacja po wyjściu z ABS */
-
+        /* Waiting for neutral on entering in Joystick mode */
         if (waitingForStateSync && "TILT".equals(action)) {
 
             waitingForStateSync = false;
@@ -264,9 +330,6 @@ public class ControlCore {
                 break;
 
             case "FOCUS_UP_KEY":
-                handleFocus(coreEvent);
-                break;
-
             case "FOCUS_DOWN_KEY":
                 handleFocus(coreEvent);
                 break;
@@ -284,14 +347,10 @@ public class ControlCore {
                 break;
 
             case "EXPOSURE_COMPENSATION":
-                handleCameraImageParameter(coreEvent);
-                break;
-
             case "EXPOSURE_IRIS":
-                handleCameraImageParameter(coreEvent);
-                break;
-
             case "EXPOSURE_SHUTTER":
+            case "WHITE_BALANCE_R_GAIN":
+            case "WHITE_BALANCE_B_GAIN":
                 handleCameraImageParameter(coreEvent);
                 break;
 
@@ -321,14 +380,6 @@ public class ControlCore {
 
             case "ONE_PUSH_WHITE_BALANCE_KEY":
                 handleWBPush(coreEvent);
-                break;
-
-            case "WHITE_BALANCE_R_GAIN":
-                handleCameraImageParameter(coreEvent);
-                break;
-
-            case "WHITE_BALANCE_B_GAIN":
-                handleCameraImageParameter(coreEvent);
                 break;
 
             case "CAMERA_SELECT_A":
@@ -446,13 +497,6 @@ public class ControlCore {
             //double delta = Math.abs(newTilt - oldTilt);
             //int speed = Math.max(1,Math.min(15,(int)Math.round(delta)));
             int speed = 8;
-
-            //DEBUG:
-            /*System.out.println(
-                    "ABS TILT: value=" + value +
-                            " current=" + camera.getTilt() +
-                            " target=" + newTilt
-            );*/
 
             camera.getParameter("tiltPosition").setCurrent(newTilt);
             camera.moveAbsolute(camera.getParameter("panPosition").getCurrent(), camera.getParameter("tiltPosition").getCurrent(), speed);
@@ -922,7 +966,6 @@ public class ControlCore {
         ModeState nextMode;
 
         ControlEvent returnEvent = null;
-        Map <String, Object> params = new HashMap<>();
 
         switch (panel.getStates().get(EXPOSURE_MODE)
         ) {
@@ -1045,7 +1088,7 @@ public class ControlCore {
         ParameterState param = new ParameterState();
         param.setCurrentState("OFF");
         camera.getParameters().put("onePushWBal", param);
-        ControlEvent returnEvent = null;
+        ControlEvent returnEvent;
 
         if (targetModeName.equalsIgnoreCase("ONE_PUSH")){
             param = new ParameterState();
@@ -1153,8 +1196,6 @@ public class ControlCore {
 
             case "EXPOSURE_COMPENSATION":
                  if (ModeState.MANUAL.equals(panel.getStates().get("EXPOSURE_MODE"))) {
-                    //DEBUG
-                    //System.out.print("GAIN SETTING => ");
                     panel.getMidiCatch().put(Control.EXPOSURE_GAIN, event.getValue());
                     if (expectedMidi == event.getValue()) {
                         panel.getStates().put(Control.EXPOSURE_GAIN, ModeState.ON);
@@ -1162,8 +1203,6 @@ public class ControlCore {
                         //panel.getStates().put(Control.EXPOSURE_GAIN, ModeState.LOCK);
                     }
                 } else {
-                     //DEBUG
-                     //System.out.print("EXPOSURE COMP. SETTING => ");
                      panel.getMidiCatch().put(EXPOSURE_COMPENSATION, event.getValue());
                     if (expectedMidi == event.getValue()) {
                         panel.getStates().put(EXPOSURE_COMPENSATION, ModeState.ON);
@@ -1171,9 +1210,6 @@ public class ControlCore {
                         //panel.getStates().put(EXPOSURE_COMPENSATION, ModeState.LOCK);
                     }
                 }
-                //DEBUG
-                //System.out.println(" VALUE = " + event.getValue());
-
                 break;
 
             case "EXPOSURE_IRIS":
@@ -1203,10 +1239,6 @@ public class ControlCore {
                 }
                 break;
         }
-
-        //DEBUG
-        /*System.out.println("===== MIDI CHATCHES ======= \n"
-                + panel.getMidiCatch().toString());*/
     }
 
     private void handleFocus(ControlEvent event){
@@ -1287,7 +1319,7 @@ public class ControlCore {
             initializeStatusIndicators(panel);
 
         }
-        midiController.sendControlEvent(
+        inputBus.publish(
                 new ControlEvent(
                         SYSTEM,
                         A,
@@ -1295,7 +1327,7 @@ public class ControlCore {
                         1
                 )
         );
-        midiController.sendControlEvent(
+        inputBus.publish(
                 new ControlEvent(
                         SYSTEM,
                         B,
@@ -1410,7 +1442,7 @@ public class ControlCore {
     }
 
     /* ==========================================
-             ZARZĄDANIE I STEROWANIE KAMERAMI
+                    CAMERA MANAGEMENT
        ==========================================*/
 
     private void handleCameraSelect(ControlEvent event) {
@@ -1439,7 +1471,7 @@ public class ControlCore {
 
 
     /* ============================
-             METODY POMOCNICZE
+             HELPERS
        ============================
 */
     //------ calculators
@@ -1610,10 +1642,21 @@ public class ControlCore {
 
     //--------   GETTERS, SETTER, SUPPORTS
 
+    /**
+     * Attaches the graphical user interface to the control core.
+     *
+     * @param gui GUI instance used for state synchronization and visual updates
+     */
     public void setGUI (MainGUI gui){
         this.gui = gui;
     }
 
+    /**
+     * Synchronizes the current runtime state with external interfaces.
+     *
+     * <p>This method updates GUI controls, MIDI indicators and camera assignment displays to match the current state maintained by
+     * the control core.</p>
+     */
     public void syncInterface(){
 
         if (this.gui != null) {
@@ -1624,6 +1667,13 @@ public class ControlCore {
         }
     }
 
+    /**
+     * Rebuilds the internal control panel registry.
+     *
+     * <p>The method removes all existing panel instances and recreates them based on the current camera-to-panel assignments.</p>
+     *
+     * <p>Typically invoked after configuration changes affecting camera mappings.</p>
+     */
     public void reconfigurePanels() {
 
         panels.clear();
@@ -1640,6 +1690,18 @@ public class ControlCore {
         }
     }
 
+    /**
+     * Distributes a processed control event to all interested output subsystems.
+     *
+     * <p>Depending on the application state, the event may be forwarded to:</p>     *
+     * <ul>
+     *     <li>the MIDI controller for LED and display updates,</li>
+     *     <li>the graphical user interface,</li>
+     *     <li>other runtime synchronization components.</li>
+     * </ul>
+     *
+     * @param event event to distribute
+     */
     private void sendControlEvent(ControlEvent event) {
 
         ControlPanelId midiPanel = midiManager.getMidiBinding(event.getPanel());
@@ -1653,13 +1715,21 @@ public class ControlCore {
                     event.getValue()
             );
 
-            midiController.sendControlEvent(midiEvent);
+            inputBus.publish(midiEvent);
         }
         if (gui != null) {
             gui.handleControlEvent(event);
         }
     }
 
+    /**
+     * Creates and initializes a new logical control panel.
+     *
+     * <p>Default operational states are assigned for all supported camera control functions.</p>
+     *
+     * @param panelId panel identifier
+     * @return initialized control panel instance
+     */
     private ControlPanel createPanel(ControlPanelId panelId) {
 
         ControlPanel panel = new ControlPanel(panelId);
@@ -1675,6 +1745,14 @@ public class ControlCore {
         return panel;
     }
 
+    /**
+     * Resolves the target control panel for an incoming event.
+     *
+     * <p>MIDI events may require translation from a physical MIDI panel identifier to a logical camera control panel.</p>
+     *
+     * @param event source event
+     * @return resolved control panel identifier or {@code null} if no valid target exists
+     */
     private ControlPanelId resolveControlPanel(ControlEvent event) {
 
         switch (event.getEventSource()) {

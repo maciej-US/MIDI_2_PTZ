@@ -1,24 +1,57 @@
 package uci.midi2ptz.gui;
 
+import lombok.Setter;
+
 import javax.swing.*;
 import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
-
+/**
+ * Custom Swing button component with integrated LED indicator.
+ *
+ * <p>The component simulates a hardware control-panel button commonly found on MIDI controllers, PTZ panels and broadcast
+ * control surfaces.</p>
+ *
+ * <p>In addition to standard button behavior, the component provides an integrated status LED supporting three operating modes:</p>
+ *
+ * <ul>
+ *     <li>{@link LedMode#OFF}</li>
+ *     <li>{@link LedMode#ON}</li>
+ *     <li>{@link LedMode#BLINK}</li>
+ * </ul>
+ *
+ * <p>All blinking indicators share a common timer-based animation engine to minimize resource usage.</p>
+ * <p>The component is primarily used for camera-selection, tally, connection-status and cue indicators within the MIDI2PTZ control interface.</p>
+ */
 public class ButtonLED extends JComponent {
 
-    // ===== TRYB LED =====
+    /**
+     * Supported LED operating modes.
+     */
     public enum LedMode {
-        OFF,
-        ON,
-        BLINK
+        OFF,                /** LED is disabled.*/
+        ON,                 /** LED remains continuously illuminated.*/
+        BLINK               /** LED periodically toggles between on and off states.*/
     }
 
+    /**
+     * Current LED operating mode.
+     */
     private LedMode mode = LedMode.OFF;
+
+    /**
+     * Text displayed on the button.
+     */
     private final String label;
 
-    // ===== KOLORY =====
+    /**
+     * Color used when the LED is active.
+     */
     private final Color LED_ON;
+
+    /**
+     * Color used when the LED is inactive.
+     */
     private static final Color LED_OFF = new Color(50, 50, 50);
 
     private static final Color BORDER = new Color(0, 0, 0);
@@ -28,12 +61,16 @@ public class ButtonLED extends JComponent {
     private static boolean blinkState = false;
     private static final List<ButtonLED> instances = new ArrayList<>();
 
+    /**
+     * Shared LED blinking engine.
+     *
+     * <p>A single Swing timer periodically toggles the global blink state and repaints only those components currently
+     * operating in {@link LedMode#BLINK} mode.</p>
+     */
     static {
-        // OKOŁO 3 Hz (zmiana stanu co 166 ms)
+        // ~3 Hz (state switch every 166 ms)
         Timer blinkTimer = new Timer(166, e -> {
             blinkState = !blinkState;
-
-            // repaint tylko tych co migają
             for (ButtonLED b : instances) {
                 if (b.mode == LedMode.BLINK) {
                     b.repaint();
@@ -43,12 +80,23 @@ public class ButtonLED extends JComponent {
         blinkTimer.start();
     }
 
-    //======== Obsługa eventów
-
+    /**
+     * Registered click handler.
+     */
+    @Setter
     private Runnable onClick;
+
+    /**
+     * Indicates whether the button is currently pressed.
+     */
     private boolean pressed = false;
 
-    // ===== KONSTRUKTOR =====
+    /**
+     * Creates a button with an integrated LED indicator.
+     *
+     * @param label button caption
+     * @param ledOnColor LED color used in active state
+     */
     public ButtonLED(String label, Color ledOnColor) {
         this.label = label;
         this.LED_ON = ledOnColor;
@@ -82,19 +130,21 @@ public class ButtonLED extends JComponent {
         instances.add(this);
     }
 
-    // ===== API =====
+    /**
+     * Sets the LED operating mode.
+     *
+     * <p>The visual representation is updated immediately.</p>
+     *
+     * @param mode target LED mode
+     */
     public void setMode(LedMode mode) {
-        //debug
-        //System.out.println("LED_BUTTON " + label + " mode triggered. VAL =  " + mode);
         this.mode = mode;
         repaint();
     }
 
-
-    public void setOnClick(Runnable onClick) {
-        this.onClick = onClick;
-    }
-
+    /**
+     * Executes the registered click action.
+     */
     private void fireClick() {
         if (!isEnabled()){
             return;
@@ -105,7 +155,7 @@ public class ButtonLED extends JComponent {
     }
 
 
-    // ===== ROZMIAR NA SZTYWNO =====
+    // ===== FIXED DIMENSIONS =====
     @Override
     public Dimension getPreferredSize() {
         return new Dimension(45, 40);
@@ -121,7 +171,16 @@ public class ButtonLED extends JComponent {
         return new Dimension(45, 40);
     }
 
-    // ===== RENDER =====
+    /**
+     * Renders the button body, text caption and LED indicator.
+     *
+     * <p>The component uses a custom control-surface style appearance with gradient shading, rounded borders
+     * and a hardware-inspired LED display.</p>
+     *
+     * <p>When the button is pressed, the graphic is slightly translated to simulate physical switch movement.</p>
+     *
+     * @param g graphics context
+     */
     @Override
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
@@ -173,18 +232,11 @@ public class ButtonLED extends JComponent {
         int ledY = h - ledHeight - 5;
 
         // obliczenie stanu LED
-        boolean ledOn;
-
-        switch (mode) {
-            case ON:
-                ledOn = true;
-                break;
-            case BLINK:
-                ledOn = blinkState;
-                break;
-            default:
-                ledOn = false;
-        }
+        boolean ledOn = switch (mode) {
+            case ON -> true;
+            case BLINK -> blinkState;
+            default -> false;
+        };
 
         // glow
         if (ledOn) {

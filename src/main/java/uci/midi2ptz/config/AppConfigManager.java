@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import lombok.Getter;
 import lombok.Setter;
-import uci.midi2ptz.core.ControlCore;
+import uci.midi2ptz.core.MainControlCore;
 import uci.midi2ptz.core.ControlEventBus;
 import uci.midi2ptz.core.ControlPanel;
 import uci.midi2ptz.gui.MainGUI;
@@ -21,12 +21,50 @@ import java.util.*;
 
 import static javax.sound.midi.MidiSystem.getMidiDeviceInfo;
 import static uci.midi2ptz.Midi2PTZ.startRuntime;
-import static uci.midi2ptz.core.ControlCore.LOGGER;
+import static uci.midi2ptz.core.MainControlCore.LOGGER;
 
+/**
+ * Central configuration management service for the MIDI2PTZ application.
+ *
+ * <p>This class is responsible for loading, validating, storing and applying application configuration changes at runtime.</p> *
+ * <p>The manager coordinates configuration updates across multiple subsystems, including:</p> *
+ * <ul>
+ *     <li>MIDI device configuration and mapping validation,</li>
+ *     <li>VISCA/PTZ camera configuration and connectivity checks,</li>
+ *     <li>network transport initialization and reconfiguration,</li>
+ *     <li>GUI refresh and runtime synchronization.</li>
+ * </ul>
+ *
+ * <p>Configuration changes are applied using a staged validation process to ensure that invalid settings cannot be committed to the running system.</p> *
+ * <p>The class also provides utility methods for MIDI device discovery and default configuration generation.</p>
+ *
+ *<h2 Validation Workflow</h2>
+ *
+ * <pre> Configuration File
+ *          |
+ *          v
+ *  JSON Deserialization
+ *          |
+ *          v
+ *    MIDI Validation
+ *          |
+ *          v
+ * Transport Validation
+ *          |
+ *          v
+ *   Camera Validation
+ *          |
+ *          v
+ * Runtime Reconfiguration </pre>
+ *
+ * <p>Any validation failure immediately aborts the update process and returns the corresponding error details.</h>
+ */
 public class AppConfigManager {
 
-    //Configuration management
-    private AppConfig config;
+    /**
+     * Configuration subsystems that may report validation or runtime errors.
+     * <p>Used by {@link ConfigurationUpdateResults} to associate validation  and configuration errors with a specific application component.</p>
+     */
     public enum ConfigurationSection {
             CONFIG_MANAGER,
             TRANSPORT,
@@ -34,25 +72,33 @@ public class AppConfigManager {
             CAMERA,
             GUI,
             JSON_OPERATIONS
-    };
-
-    public enum UpdateMode {
-        VALIDATE_ONLY,
-        COMMIT,
-        INITIAL_LOAD,
-        FIRST_LAUNCH
     }
 
-    //private final List<ConfigurationListener>listeners = new ArrayList<>();
+    /**
+     * Defines the configuration update strategy.
+     *
+     * <p>Different update modes determine the amount of validation performed
+     * and whether changes should be applied to the running application.</p>
+     */
+    public enum UpdateMode {
+        VALIDATE_ONLY,          /** Validate configuration without applying any changes.*/
+        COMMIT,                 /** Validate configuration and commit changes to the running system. */
+        INITIAL_LOAD,           /** Initial application startup using an existing configuration file.*/
+        FIRST_LAUNCH            /** First application launch using a newly generated configuration.*/
+    }
 
-    //API
+    @Getter
+    private AppConfig config;
+
+    @Setter
     private volatile PTZCameraManager cameraManager;
     @Getter @Setter
     private volatile MidiControllerManager midiManager;
+    @Setter
     private volatile MainGUI gui;
     @Setter
-    private volatile ControlCore core;
-    private volatile ControlEventBus eventBus;
+    private volatile MainControlCore core;
+    private final ControlEventBus eventBus;
 
     private static final ObjectMapper MAPPER = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
     private final File configFile;
@@ -60,13 +106,26 @@ public class AppConfigManager {
     @Getter @Setter
     private boolean firstLaunch = true;
 
+    /**
+     * Creates a new configuration manager instance.
+     *
+     * @param configPath path to the application configuration file
+     * @param eventBus application event bus used for subsystem communication
+     */
     public AppConfigManager(String configPath, ControlEventBus eventBus) {
 
         this.eventBus = eventBus;
         this.configFile = new File(configPath);
     }
 
-    public ConfigurationUpdateResults loadConfiguration(UpdateMode mode) {
+    /**
+     * Loads configuration from the default configuration file and performs  validation according to the specified update mode.
+     * <p>If validation succeeds, the loaded configuration becomes the active application configuration.</p>
+     *
+     * @param mode configuration update mode
+     * @return validation and update result information
+     */
+    public ConfigurationUpdateResults loadConfiguration(UpdateMode mode){
 
         ConfigurationUpdateResults results = new ConfigurationUpdateResults();
         AppConfig newConfig;
@@ -85,12 +144,16 @@ public class AppConfigManager {
             return results;
         }
 
-        if (!results.getErrors().isEmpty()){
-            return results;
-        }
         return results;
     }
 
+    /**
+     * Loads and validates configuration from an external file.
+     * <p>The loaded configuration is validated as a runtime configuration and may be applied to the running application depending on validation results.</p>
+     *
+     * @param file source configuration file
+     * @return validation and update result information
+     */
     public ConfigurationUpdateResults loadConfiguration(File file){
 
         ConfigurationUpdateResults results = new ConfigurationUpdateResults();
@@ -105,13 +168,15 @@ public class AppConfigManager {
 
         results = updateConfiguration(newConfig, UpdateMode.COMMIT);
 
-        if (!results.getErrors().isEmpty()){
-            return results;
-        }
         return results;
-
     }
 
+    /**
+     * Saves the currently active configuration to the configured
+     * application configuration file.
+     *
+     * @return operation result containing any serialization errors
+     */
     public ConfigurationUpdateResults saveConfiguration() {
 
         ConfigurationUpdateResults results = new ConfigurationUpdateResults();
@@ -125,6 +190,13 @@ public class AppConfigManager {
         return results;
     }
 
+    /**
+     * Validates and saves the specified configuration using the default configuration file path.     *
+     * <p>The configuration is validated before serialization.</p>
+     *
+     * @param config configuration to save
+     * @return save operation result
+     */
     public ConfigurationUpdateResults saveConfiguration(AppConfig config) {
 
         ConfigurationUpdateResults results = updateConfiguration(config, UpdateMode.VALIDATE_ONLY);
@@ -141,7 +213,14 @@ public class AppConfigManager {
         return results;
     }
 
-    public ConfigurationUpdateResults saveConfiguration(AppConfig config, File targetFile){
+    /**
+     * Validates and saves the provided configuration to a specific target file.
+     *
+     * @param config configuration to save
+     * @param targetFile destination file
+     * @return save operation result
+     */
+    public ConfigurationUpdateResults saveConfiguration(AppConfig config, File targetFile) {
 
         ConfigurationUpdateResults results = updateConfiguration(config, UpdateMode.VALIDATE_ONLY);
         if (!results.getErrors().isEmpty()){
@@ -157,11 +236,24 @@ public class AppConfigManager {
         return results;
     }
 
+    /**
+     * Checks whether the application configuration file exists.
+     *
+     * @return {@code true} if the configuration file exists, otherwise {@code false}
+     */
     public boolean configurationExists() {
 
         return configFile.exists();
     }
 
+    /**
+     * Loads the existing configuration or creates a new default configuration.
+     *
+     * <p>If the configuration file does not exist or contains invalid data, a new default configuration instance is generated.</p>     *
+     * <p>This method is intended to be used during application startup.</p>
+     *
+     * @return configuration initialization result
+     */
     public ConfigurationUpdateResults loadOrCreateDefault() {
 
         ConfigurationUpdateResults results = new ConfigurationUpdateResults();
@@ -218,6 +310,12 @@ public class AppConfigManager {
         }
     }
 
+    /**
+     * Creates a new default application configuration.     *
+     * <p>The generated configuration contains empty user settings, presets and default subsystem configuration objects.</p>
+     *
+     * @return initialized default configuration instance
+     */
     public AppConfig createDefaultConfig() {
 
         AppConfig config = new AppConfig();
@@ -227,16 +325,14 @@ public class AppConfigManager {
         return config;
     }
 
-    public void setCameraManager (PTZCameraManager cameraManager) {
-        this.cameraManager = cameraManager;
-    }
-
-    public void setGui (MainGUI gui) {
-        this.gui = gui;
-    }
-
-    //--- Config update after changes
-    public void updateMidiBinding(ControlPanel targetCorePanel, ControlCore.ControlPanelId midiPanel){
+    /**
+     * Updates MIDI panel assignment for a specific control panel.
+     * <p>The corresponding camera configuration is updated and the configuration is marked as modified.</p>
+     *
+     * @param targetCorePanel target control panel
+     * @param midiPanel MIDI panel assigned to the control panel
+     */
+    public void updateMidiBinding(ControlPanel targetCorePanel, MainControlCore.ControlPanelId midiPanel){
 
         String cameraId = "CAM_" + targetCorePanel.getId();
 
@@ -245,25 +341,35 @@ public class AppConfigManager {
                 .stream()
                 .filter(c -> cameraId.equals(c.getCameraId()))
                 .findFirst()
-                .ifPresent(c -> {
-                            c.setAssignedMidiPanel(
-                                    midiPanel.toString()
-                            );
-                        }
+                .ifPresent(c -> c.setAssignedMidiPanel(
+                        midiPanel.toString()
+                )
                 );
 
         this.config.setChanged(true);
     }
 
+    /**
+     * Validates and applies a new configuration.     *
+     * <p>The update process consists of multiple validation stages:</p>     *
+     * <ol>
+     *     <li>change detection,</li>
+     *     <li>MIDI configuration validation,</li>
+     *     <li>network transport validation,</li>
+     *     <li>camera and VISCA validation,</li>
+     *     <li>runtime subsystem reconfiguration.</li>
+     * </ol>     *
+     * <p>Depending on the selected update mode, validation may be performed without modifying the running application.</p>
+     *
+     * @param newConfig candidate configuration
+     * @param updateMode update strategy
+     * @return validation and update results
+     */
     public ConfigurationUpdateResults updateConfiguration (AppConfig newConfig, UpdateMode updateMode){
-
-        //DEBUG
-        /*System.out.println("updateConfiguration [configManager] running mode" + updateMode);
-        System.out.println("updateConfiguration [configManager] received config\n" + newConfig);*/
 
         ConfigurationUpdateResults results = new ConfigurationUpdateResults();
 
-        Map<String, Object> newTransportConfig = newConfig.getSystem().getTransport();
+        AppConfig.Transport newTransportConfig = newConfig.getSystem().getTransport();
         AppConfig.MidiConfig newMidiConfig = newConfig.getSystem().getMidi();
         List<AppConfig.CameraConfig> newCamerasConfig = new ArrayList<>(newConfig.getSystem().getCameras());
 
@@ -282,7 +388,7 @@ public class AppConfigManager {
             camerasChanged = true;
         } else {
             // PTZ Transport configuration update
-            Map<String, Object> oldTransportConfig = this.config.getSystem().getTransport();
+            AppConfig.Transport oldTransportConfig = this.config.getSystem().getTransport();
             transportChanged = !Objects.equals(oldTransportConfig, newTransportConfig);
 
             // MIDI configuration update
@@ -303,10 +409,8 @@ public class AppConfigManager {
         // STAGE 2 - MIDI validation
 
         if (midiChanged && runtimeValidation) {
-            MidiDevice input = null;
-            MidiDevice output = null;
-            MidiConfig midiMapping = null;
 
+            MidiConfig midiMapping;
             AppConfig.MidiConfig midiConfig = newConfig.getSystem().getMidi();
 
             try {
@@ -333,15 +437,12 @@ public class AppConfigManager {
                     throw new IllegalArgumentException("Błędna zawartość pliku konfiguracji MIDI");
                 }
             } catch (Exception e) {
-                e.printStackTrace();
                 results.getErrors().put(ConfigurationSection.MIDI, e.getMessage());
-                //DEBUG
-                System.out.println("[CFG MAN] return after MIDI config file validation");
                 return results;
             }
             if (runtimeValidation) {
                 try {
-                    MidiControllerManager.validateConfiguration(newConfig, ControlCore.RunMode.TEST);
+                    MidiControllerManager.validateConfiguration(newConfig, MainControlCore.RunMode.TEST);
                 } catch (Exception e) {
                     results.getErrors().put(ConfigurationSection.MIDI, e.getMessage());
                     return results;
@@ -403,8 +504,6 @@ public class AppConfigManager {
                         ConfigurationSection.CAMERA,
                         e.getMessage()
                 );
-                //DEBUG
-                System.out.println("[CFG MAN] return after cameras validation " + results.getErrors().get(ConfigurationSection.CAMERA));
                 return results;
             }
         }
@@ -441,9 +540,6 @@ public class AppConfigManager {
 
         if (runtimeValidation) {
 
-            //DEBUG
-            System.out.println("Runtime validation triggered.");
-
             if (transportChanged) {
                 results = cameraManager.updateTransportSocket(preparedSocket);
             }
@@ -461,11 +557,14 @@ public class AppConfigManager {
         return results;
     }
 
+    /**
+     * Refreshes application subsystems after a configuration change.
+     *
+     * <p>This includes GUI updates, control panel reconstruction and runtime interface synchronization.</p>
+     */
     public void refreshAfterReconfiguration() {
 
         if (gui != null) {
-            //DEbug
-            System.out.println("Refresh GUI");
             gui.reloadConfiguration();
             gui.rebuildPanels();
         }
@@ -476,10 +575,13 @@ public class AppConfigManager {
         }
     }
 
-    public AppConfig getConfig() {
-        return this.config;
-    }
-
+    /**
+     * Performs a basic structural *alidation of a configuration object.
+     * <p>The method verifies tha* all required top-level configuration sections are present.</p>
+     *
+     * @param config configuration to validate
+     * @return {@code true} if the required structure is present,otherwise {@code false}
+     */
     private boolean isConfigurationStructureValid(AppConfig config){
 
         if (config == null) {
@@ -498,13 +600,15 @@ public class AppConfigManager {
             return false;
         }
 
-        if (config.getSystem().getCameras() == null) {
-            return false;
-        }
-
-        return true;
+        return config.getSystem().getCameras() != null;
     }
 
+    /**
+     * Retrieves all MIDI devices*available in the current system.
+     * <p>Both input and output capable devices are returned.</p>
+     *
+     * return list of detected MIDI devices
+     */
     public static List<MidiDeviceInfo> getMidiDevices() {
 
         List<MidiDeviceInfo> result = new ArrayList<>();
@@ -519,28 +623,38 @@ public class AppConfigManager {
                 result.add(new MidiDeviceInfo(infos[i].getName(), i, device.getMaxTransmitters(), device.getMaxReceivers()));
 
             } catch (MidiUnavailableException e) {
-                e.printStackTrace();
+                LOGGER.warning("MIDI device error: " + e.getMessage());
             }
         }
 
         return result;
     }
 
+    /**
+     * Retrieves all MIDI devices capable of transmitting MIDI messages to the application.
+     *
+     * @return avail*ble MIDI input devices
+     */
     public static List<MidiDeviceInfo> getMidiInputs() {
 
         return getMidiDevices()
                 .stream()
                 .filter(d ->
-                        d.getRxTransmitters() >= 0)
+                        d.rxTransmitters() >= 0)
                 .toList();
     }
 
+    /**
+     * Retrieves all MIDI devices capable of receiving MID* messages from the application.
+     *
+     * @return available MIDI output devices
+     */
     public static List<MidiDeviceInfo> getMidiOutputs() {
 
         return getMidiDevices()
                 .stream()
                 .filter(d ->
-                        d.getTxReceivers() >= 0)
+                        d.txReceivers() >= 0)
                 .toList();
     }
 

@@ -6,7 +6,7 @@ import lombok.Data;
 import uci.midi2ptz.config.AppConfig;
 import uci.midi2ptz.config.AppConfigManager;
 import uci.midi2ptz.config.ConfigurationUpdateResults;
-import uci.midi2ptz.core.ControlCore;
+import uci.midi2ptz.core.MainControlCore;
 import uci.midi2ptz.ptz.PTZCamera;
 import uci.midi2ptz.ptz.PTZCameraManager;
 import uci.midi2ptz.midi.MidiDeviceInfo;
@@ -28,7 +28,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-import static uci.midi2ptz.core.ControlCore.LOGGER;
+import static uci.midi2ptz.core.MainControlCore.LOGGER;
 
 //Data management
 public class SettingsDialog extends JDialog {
@@ -40,10 +40,10 @@ public class SettingsDialog extends JDialog {
 
 
     //CAMERA page
-    private final Map<ControlCore.ControlPanelId, CameraPanelComponents> cameraPanels = new LinkedHashMap<>();
+    private final Map<MainControlCore.ControlPanelId, CameraPanelComponents> cameraPanels = new LinkedHashMap<>();
 
-    private final Map<ControlCore.ControlPanelId, JLabel> cameraStatusLabels;
-    private final Map<ControlCore.ControlPanelId, JButton> cameraTestButtons;
+    private final Map<MainControlCore.ControlPanelId, JLabel> cameraStatusLabels;
+    private final Map<MainControlCore.ControlPanelId, JButton> cameraTestButtons;
 
     //GENERAL page
     GeneralPanelComponents systemPanelComponents = new GeneralPanelComponents();
@@ -101,8 +101,8 @@ public class SettingsDialog extends JDialog {
         systemPanelComponents.localIpField = new JTextField(15);
         systemPanelComponents.localPortField = new JTextField(6);
 
-        Map<String, Object> transportConfig = configManager.getConfig().getSystem().getTransport();
-        boolean autoIP = Boolean.TRUE.equals(transportConfig.get("autoIp"));
+        AppConfig config = configManager.getConfig();
+        boolean autoIP = config.getSystem().getTransport().isAutoIp();
         systemPanelComponents.autoIpCheckBox.setSelected(autoIP);
         String finalLocalAutoIP = localAutoIP;
         systemPanelComponents.autoIpCheckBox.addActionListener(e -> {
@@ -114,13 +114,21 @@ public class SettingsDialog extends JDialog {
 
         });
 
-        systemPanelComponents.localIpField.setText(String.valueOf(transportConfig.getOrDefault("localIp", "")));
+        String localIp = config.getSystem().getTransport().getLocalIp();
+        if (localIp == null || localIp.isBlank()) {
+            localIp = "";
+        }
+        systemPanelComponents.localIpField.setText(localIp);
         systemPanelComponents.localIpField.setEnabled(!systemPanelComponents.autoIpCheckBox.isSelected());
         if (systemPanelComponents.autoIpCheckBox.isSelected()){
             systemPanelComponents.localIpField.setText(localAutoIP);
         }
 
-        systemPanelComponents.localPortField.setText(String.valueOf(transportConfig.getOrDefault("localPort", "52381")));
+        int localPort = config.getSystem().getTransport().getLocalPort();
+        if (localPort < 0 || localPort > 65535) {
+            localPort = 52381;
+        }
+        systemPanelComponents.localPortField.setText(String.valueOf(localPort));
 
         transportGbc.gridx = 0;
         transportGbc.gridy = 0;
@@ -166,7 +174,7 @@ public class SettingsDialog extends JDialog {
         DefaultComboBoxModel<MidiDeviceInfo> inputModel = new DefaultComboBoxModel<>();
         inputModel.addElement(null);
         for (MidiDeviceInfo device : AppConfigManager.getMidiInputs()) {
-            if (device.getRxTransmitters() >= 0) {
+            if (device.rxTransmitters() >= 0) {
                 inputModel.addElement(device);
             }
         }
@@ -177,7 +185,7 @@ public class SettingsDialog extends JDialog {
         if (configuredInput != null) {
             for (int i = 0; i < inputComboBox.getItemCount(); i++) {
                 MidiDeviceInfo device = inputComboBox.getItemAt(i);
-                if (device != null && configuredInput.equals(device.getDeviceName())) {
+                if (device != null && configuredInput.equals(device.deviceName())) {
                     inputComboBox.setSelectedIndex(i);
                     break;
                 }
@@ -188,7 +196,7 @@ public class SettingsDialog extends JDialog {
         DefaultComboBoxModel<MidiDeviceInfo> outputModel = new DefaultComboBoxModel<>();
         outputModel.addElement(null);
         for (MidiDeviceInfo device : AppConfigManager.getMidiOutputs()) {
-            if (device.getTxReceivers() >= 0) {
+            if (device.txReceivers() >= 0) {
                 outputModel.addElement(device);
             }
         }
@@ -197,7 +205,7 @@ public class SettingsDialog extends JDialog {
         if (configuredOutput != null) {
             for (int i = 0; i < outputComboBox.getItemCount(); i++) {
                 MidiDeviceInfo device = outputComboBox.getItemAt(i);
-                if (device != null && configuredOutput.equals(device.getDeviceName())) {
+                if (device != null && configuredOutput.equals(device.deviceName())) {
                     outputComboBox.setSelectedIndex(i);
                     break;
                 }
@@ -285,7 +293,7 @@ public class SettingsDialog extends JDialog {
         container.setLayout(new BoxLayout(container, BoxLayout.Y_AXIS)
         );
 
-        for (ControlCore.ControlPanelId panelId : ControlCore.ControlPanelId.values()) {
+        for (MainControlCore.ControlPanelId panelId : MainControlCore.ControlPanelId.values()) {
             AppConfig.CameraConfig cameraConfig = null;
 
             for (AppConfig.CameraConfig camera : config.getSystem().getCameras()) {
@@ -339,7 +347,7 @@ public class SettingsDialog extends JDialog {
         return panel;
     }
 
-    private CameraPanelComponents createCameraConfigPanel(ControlCore.ControlPanelId panelId, AppConfig.CameraConfig cameraConfig) {
+    private CameraPanelComponents createCameraConfigPanel(MainControlCore.ControlPanelId panelId, AppConfig.CameraConfig cameraConfig) {
 
         JPanel leftPanel = new JPanel(new GridBagLayout());
         GridBagConstraints gbc = new GridBagConstraints();
@@ -490,7 +498,6 @@ public class SettingsDialog extends JDialog {
                     statusValue.setForeground(errorColor);
                     return;
                 }
-                //DEBUG
                 if(cameraPanelComponents.configPath == null || cameraPanelComponents.configPath.isBlank()){
                     statusValue.setText("BŁAD CFG");
                     statusValue.setForeground(errorColor);
@@ -510,8 +517,6 @@ public class SettingsDialog extends JDialog {
                 statusValue.setForeground(errorColor);
             }
             gui.refreshStatusInfo(panelId);
-            //debug:
-            //System.out.println("Refresh panel " + panelId + " CAM STATUS ONLINE: " + online);
         });
 
         // ======== LAYOUT
@@ -607,15 +612,15 @@ public class SettingsDialog extends JDialog {
 
         //SYSTEM TAB
 
-        Map<String, Object> transport = config.getSystem().getTransport();
-        transport.put("autoIp", systemPanelComponents.autoIpCheckBox.isSelected());
-        transport.put("localIp", systemPanelComponents.localIpField.getText().trim());
-        transport.put("localPort", Integer.parseInt(systemPanelComponents.localPortField.getText().trim()));
-        transport.put("socketTimeout", 150);
+        AppConfig.Transport transport = config.getSystem().getTransport();
+        transport.setAutoIp(systemPanelComponents.autoIpCheckBox.isSelected());
+        transport.setLocalIp(systemPanelComponents.localIpField.getText().trim());
+        transport.setLocalPort(Integer.parseInt(systemPanelComponents.localPortField.getText().trim()));
+        transport.setSocketTimeout(150);
 
         //CAMERAS TAB
         config.getSystem().getCameras().clear();
-        for (Map.Entry<ControlCore.ControlPanelId, CameraPanelComponents> entry : cameraPanels.entrySet()) {
+        for (Map.Entry<MainControlCore.ControlPanelId, CameraPanelComponents> entry : cameraPanels.entrySet()) {
             String camIp = entry.getValue().ipField.getText().trim();
             if (camIp.isBlank()){
                 continue;
@@ -636,8 +641,8 @@ public class SettingsDialog extends JDialog {
         //MIDI TAB
         MidiDeviceInfo input = (MidiDeviceInfo) inputComboBox.getSelectedItem();
         if (input != null) {
-            config.getSystem().getMidi().getInput().setDeviceName(input.getDeviceName());
-            config.getSystem().getMidi().getInput().setDeviceIndex(input.getDeviceIndex());
+            config.getSystem().getMidi().getInput().setDeviceName(input.deviceName());
+            config.getSystem().getMidi().getInput().setDeviceIndex(input.deviceIndex());
         } else {
             config.getSystem().getMidi().getInput().setDeviceName(null);
             config.getSystem().getMidi().getInput().setDeviceIndex(-1);
@@ -645,8 +650,8 @@ public class SettingsDialog extends JDialog {
 
         MidiDeviceInfo output = (MidiDeviceInfo) outputComboBox.getSelectedItem();
         if (output != null) {
-            config.getSystem().getMidi().getOutput().setDeviceName(output.getDeviceName());
-            config.getSystem().getMidi().getOutput().setDeviceIndex(output.getDeviceIndex());
+            config.getSystem().getMidi().getOutput().setDeviceName(output.deviceName());
+            config.getSystem().getMidi().getOutput().setDeviceIndex(output.deviceIndex());
         } else {
             config.getSystem().getMidi().getOutput().setDeviceName(null);
             config.getSystem().getMidi().getOutput().setDeviceIndex(-1);
@@ -760,7 +765,7 @@ public class SettingsDialog extends JDialog {
 
     private void refreshCameraStatuses() {
 
-        for (ControlCore.ControlPanelId panelId : cameraPanels.keySet()) {
+        for (MainControlCore.ControlPanelId panelId : cameraPanels.keySet()) {
 
             CameraPanelComponents panel = cameraPanels.get(panelId);
 
@@ -831,7 +836,7 @@ public class SettingsDialog extends JDialog {
 
         JButton testButton;
 
-        ControlCore.ControlPanelId panelId;
+        MainControlCore.ControlPanelId panelId;
     }
 
     @Data

@@ -6,9 +6,10 @@ import lombok.Setter;
 import uci.midi2ptz.config.AppConfig;
 import uci.midi2ptz.config.AppConfigManager;
 import uci.midi2ptz.config.ConfigurationUpdateResults;
-import uci.midi2ptz.core.ControlCore.*;
+import uci.midi2ptz.core.MainControlCore.*;
 import uci.midi2ptz.core.ControlEvent;
 import uci.midi2ptz.core.ControlEventBus;
+import uci.midi2ptz.core.ControlEventListener;
 import uci.midi2ptz.visca.ViscaConfig;
 import uci.midi2ptz.visca.ViscaPTZController;
 
@@ -24,32 +25,84 @@ import java.util.logging.Logger;
 
 import static uci.midi2ptz.core.ControlEvent.EventSource.SYSTEM;
 
+/**
+ * Central PTZ camera management service.
+ *
+ * <p>This class is responsible for the lifecycle management of PTZ cameras, VISCA-over-IP communication and camera-to-control-panel assignments.</p>
+ *
+ * <p>The manager acts as the communication layer between application logic and physical PTZ devices. It maintains UDP transport resources,
+ * camera instances and assignment mappings used by the runtime.</p>
+ *
+ * <h2>Main Responsibilities</h2> *
+ * <ul>
+ *     <li>PTZ camera creation and removal</li>
+ *     <li>VISCA-over-IP communication transport management</li>
+ *     <li>Camera configuration reload and synchronization</li>
+ *     <li>Panel-to-camera routing</li>
+ *     <li>Camera connectivity monitoring</li>
+ *     <li>Runtime transport reconfiguration</li>
+ * </ul>
+ *
+ * <h2>Communication Model</h2> *
+ * <pre>
+ * ControlCore
+ *      |
+ *      v
+ * PTZCameraManager
+ *      |
+ *      v
+ * DatagramSocket
+ *      |
+ *      v
+ * PTZ Cameras
+ * </pre>
+ *
+ * <p>A single UDP transport instance is shared between all managed cameras.</p>
+ */
 public class PTZCameraManager {
 
     //ROUTING, ASSIGNMENTS, PANELS
+    @Getter
     private final Map<String, PTZCamera> cameras = new ConcurrentHashMap<>();
     private final Map<ControlPanelId, PTZCamera> guiPanelAssignments = new ConcurrentHashMap<>();
     @Getter
     private final Map<ControlPanelId, PTZCamera> midiPanelAssignments = new ConcurrentHashMap<>();
     @Setter
     private AppConfigManager appConfigManager;
-    private ControlEventBus inputBus;
+    private final ControlEventBus inputBus;
 
     //UDP communication
     private final Map <String, PendingPacket> pendingPackets = new ConcurrentHashMap<>();
     private Thread receiverThread;
     @Getter
     private DatagramSocket socket = null;
+    @Getter
     private String localIp;
+    @Getter
     private int localPort;
     private boolean running = true;
     private boolean initialized;
 
     //STATUS
     private static final Logger LOGGER = Logger.getLogger(PTZCameraManager.class.getName());
-    public enum TransportState {ONLINE, OFFLINE, UNINITIALIZED};
-    private TransportState transportState = TransportState.OFFLINE;
 
+    /**
+     * Describes the state of the UDP transport layer.
+     */
+    public enum TransportState {
+        ONLINE,             /**Transport socket is initialized and operational.*/
+        OFFLINE,            /** Transport initialization failed or communication is currently unavailable.*/
+        UNINITIALIZED       /** Transport has not yet been initialized.*/
+    }
+
+    private TransportState transportState;
+
+    /**
+     * Creates a new PTZ camera manager.
+     *
+     * @param eventBus application event bus used for camera status events
+     * @param appConfigManager configuration manager
+     */
     public PTZCameraManager(ControlEventBus eventBus, AppConfigManager appConfigManager)  {
 
         this.inputBus = eventBus;
@@ -58,9 +111,18 @@ public class PTZCameraManager {
     }
 
 
-    /* ==================================
-                 UDP TRAFFIC
-       ==================================*/
+    /**
+     * Sends a VISCA-over-IP packet to a camera and registers  a pending response tracker.
+     *
+     * <p>The method associates the outgoing packet with a {@link PendingPacket} instance that will be completed asynchronously when a response arrives.</p>
+     *
+     * @param camera target camera
+     * @param udpPacket encoded VISCA packet
+     * @return pending packet tracking object
+     *
+     * @throws IOException communication error
+     * @throws InterruptedException if the operation is interrupted
+     */
     public PendingPacket sendPacket(PTZCamera camera, byte[] udpPacket) throws IOException, InterruptedException {
 
         synchronized (camera.getTransactionLock()) {
@@ -88,18 +150,25 @@ public class PTZCameraManager {
         }
     }
 
-    public int getLocalPort(){
-        return this.localPort;
-    }
-
-    public String getLocalIp(){
-        return this.localIp;
-    }
-
-    /* ==================================
-              CAMERA MANAGEMENT
-       ==================================*/
-
+    /**
+     * Creates and registers a new PTZ camera instance.
+     *
+     * <p>The camera is added to the internal registry and  assigned to the configured control and MIDI panels.</p>
+     *
+     * @param cameraId unique camera identifier
+     * @param ipAddress camera IP address
+     * @param cameraPort camera VISCA port
+     * @param localPort local transport port
+     * @param socketTimeout communication timeout
+     * @param displayName user-visible camera name
+     * @param config VISCA protocol definition
+     * @param assignedCorePanel logical control panel
+     * @param assignedMidiPanel assigned MIDI panel
+     *
+     * @return created camera instance
+     *
+     * @throws Exception if camera initialization fails
+     */
     public PTZCamera addCamera(String cameraId, String ipAddress, int cameraPort, int localPort, int socketTimeout, String displayName, ViscaConfig config,
                                ControlPanelId assignedCorePanel, ControlPanelId assignedMidiPanel) throws Exception {
 
@@ -116,17 +185,17 @@ public class PTZCameraManager {
         if (assignedMidiPanel != null){
             midiPanelAssignments.put(assignedMidiPanel, camera);
         }
-        //DEBUG:
-        /*System.out.println("CAM=" + cameraId + " GUI=" + assignedGuiPanel + " MIDI=" + assignedMidiPanel);*/
-
-       /* System.out.println("ADD CAMERA "
-                + cameraId
-                + " HASH="
-                + System.identityHashCode(camera)
-        );*/
         return camera;
     }
 
+    /**
+     * Retrieves a registered camera.
+     *
+     * @param cameraId camera identifier
+     * @return camera instance
+     *
+     * @throws IllegalArgumentException if the camera does not exist
+     */
     public PTZCamera getCamera(String cameraId) {
 
         PTZCamera camera = cameras.get(cameraId);
@@ -140,11 +209,13 @@ public class PTZCameraManager {
         return camera;
     }
 
-    public void assignCorePanel(ControlPanelId panel, PTZCamera camera) {
-
-        guiPanelAssignments.put(panel, camera);
-    }
-
+    /**
+     * Removes a camera from the manager.
+     *
+     * <p>The camera is detached from all panel assignments and any pending communication resources are cleaned up.</p>
+     *
+     * @param cameraId identifier of the camera to remove
+     */
     public void removeCamera(String cameraId) {
 
         PTZCamera camera = cameras.remove(cameraId);
@@ -164,6 +235,15 @@ public class PTZCameraManager {
         midiPanelAssignments.values().removeIf(c -> c == camera);
     }
 
+    /**
+     * Reloads camera definitions from the current application configuration.
+     *
+     * <p>The method creates, updates or removes camera instances to match the active configuration.</p>
+     *
+     * <p>All routing information, panel assignments and VISCA controller definitions are refreshed.</p>
+     *
+     * @return reconfiguration result
+     */
     public ConfigurationUpdateResults reconfigureCameras() {
 
         LOGGER.info("reconfigureCameras(): state=" + transportState);
@@ -197,13 +277,14 @@ public class PTZCameraManager {
                 }
 
                 ViscaConfig viscaConfig = viscaMapper.readValue(new File(cameraConfig.getViscaDefinition()),ViscaConfig.class);
+                long socketTimeout = Math.max(appConfigManager.getConfig().getSystem().getTransport().getSocketTimeout(),200);
 
                 addCamera(
                         cameraConfig.getCameraId(),
                         cameraConfig.getIpAddress(),
                         cameraConfig.getPort(),
                         localPort,
-                        (int) appConfigManager.getConfig().getSystem().getTransport().getOrDefault("socketTimeout", 200),
+                        (int)socketTimeout,
                         cameraConfig.getDisplayName(),
                         viscaConfig,
                         corePanel,
@@ -231,13 +312,15 @@ public class PTZCameraManager {
         }
 
         LOGGER.info("Camera configuration reloaded.");
-        //DEBUG
-        System.out.println("MIDI ASSIGNMENTS = " + midiPanelAssignments);
-        System.out.println("GUI ASSIGNMENTS = " + guiPanelAssignments);
-        System.out.println("CAMERAS = " + cameras.keySet());
         return results;
     }
 
+    /**
+     * Retrieves the camera assigned to a logical control panel.
+     *
+     * @param panel control panel identifier
+     * @return assigned camera or {@code null}
+     */
     public PTZCamera getCoreAssignedCamera(ControlPanelId panel) {
 
         return guiPanelAssignments.get(panel);
@@ -256,6 +339,34 @@ public class PTZCameraManager {
         return null;
     }
 
+    /**
+     * Performs a camera connectivity test using the provided VISCA configuration.
+     *
+     * @param ip target camera IP address
+     * @param port target camera port
+     * @param configPath VISCA definition file
+     *
+     * @return {@code true} if communication succeeds
+     */
+    public boolean testConnection(String ip,int port,String configPath){
+
+        LOGGER.info("TESTING CONNECTION for IP " + ip + ":" + port + "\nCONFIG FILE: " + configPath);
+
+        try{
+            return ViscaPTZController.testConnection(this, ip, port, configPath);
+
+        }catch (Exception e){
+            LOGGER.warning("TESTING CONNECTION for IP " + ip + ":" + port + "\nCONFIG FILE: " + configPath + "FAILED. \n" + e.getMessage());
+        }
+        return false;
+    }
+
+    /**
+     * Determines whether the camera assigned to the specified panel is currently online.
+     *
+     * @param panel control panel identifier
+     * @return {@code true} if the assigned camera is reachable
+     */
     public boolean isCameraOnline (ControlPanelId panel) {
 
         PTZCamera camera = getCoreAssignedCamera(panel);
@@ -267,47 +378,12 @@ public class PTZCameraManager {
         return camera.isOnline();
     }
 
-    public boolean testConnection(String ip,int port,String configPath){
-
-        LOGGER.info("TESTING CONNECTION for IP " + ip + ":" + port + "\nCONFIG FILE: " + configPath);
-
-        try{
-            return ViscaPTZController.testConnection(this, ip, port, configPath);
-
-        }catch (Exception e){
-            LOGGER.warning("TESTING CONNECTION for IP " + ip + ":" + port + "\nCONFIG FILE: " + configPath + "FAILED. \n" + e.getMessage());
-        }
-
-
-        return true;
-    }
-
-    public String CorePanelBinding(ControlPanelId midiPanel) {
-
-        PTZCamera camera = midiPanelAssignments.get(midiPanel);
-
-        if (camera == null) {
-            return null;
-        }
-
-        for (Map.Entry<ControlPanelId, PTZCamera> entry : guiPanelAssignments.entrySet()) {
-
-            if (camera.equals(entry.getValue())) {
-                return entry.getKey().name();
-            }
-        }
-
-        return null;
-    }
-
-    public Map<String, PTZCamera> getCameras() {
-        return cameras;
-    }
-
-    public String getCoreAssignments(){
-        return guiPanelAssignments.toString();
-    }
-
+    /**
+     * Returns a human-readable description of the camera assigned to a panel.
+     *
+     * @param panel control panel identifier
+     * @return camera description or empty string
+     */
     public String getCameraDescription (ControlPanelId panel){
 
         PTZCamera camera = getCoreAssignedCamera(panel);
@@ -319,10 +395,16 @@ public class PTZCameraManager {
 
     }
 
+    /**
+     * Publishes a camera status update event.
+     *
+     * <p>The generated event is forwarded to the application event bus and may be processed by the GUI, MIDI layer
+     * or control runtime.</p>
+     *
+     * @param camera affected camera
+     * @param online new online status
+     */
     public void notifyCameraStatusChanged(PTZCamera camera, boolean online) {
-
-        //DEBUG
-        //System.out.println("STATUS EVENT => "+ camera.getCameraId() + " ONLINE=" + online + " CALLER=" + Thread.currentThread().getStackTrace()[2]);
 
         ControlPanelId panel = getAssignedCorePanel(camera);
 
@@ -337,6 +419,14 @@ public class PTZCameraManager {
         this.inputBus.publish(event);
     }
 
+    /**
+     * Verifies camera connectivity and attempts automatic recovery.
+     *
+     * <p>The method performs a power status check and may send a power-on command if the camera is reachable but currently powered off.</p>
+     *
+     * @param panelId target panel
+     * @return {@code true} if the camera becomes operational
+     */
     public boolean refreshConnection(ControlPanelId panelId) {
 
         PTZCamera camera = getCoreAssignedCamera(panelId);
@@ -397,9 +487,11 @@ public class PTZCameraManager {
         }
     }
 
-    // =====================================
-    //     RUNTIME MANAGEMENT
-    //=====================================
+    /**
+     * Initializes camera transport and communication services.
+     *
+     * <p>The transport layer is created, the packet receiver thread is started and configured cameras are loaded.</p>
+     */
     public void initialize(){
 
         initializeTransport(appConfigManager.getConfig());
@@ -435,19 +527,6 @@ public class PTZCameraManager {
                         catch (IOException e){
                             LOGGER.warning("Communication error for camera on " + packet.getAddress() +":" + packet.getPort());
                         }catch (Exception e){
-
-                            //DEBUG
-                                e.printStackTrace();
-
-                                LOGGER.warning(
-                                        "Packet error for camera "
-                                                + packet.getAddress()
-                                                + ":"
-                                                + packet.getPort()
-                                                + " -> "
-                                                + e.getMessage()
-                                );
-
                             LOGGER.warning("Packet error for camera " + packet.getAddress() +":" + packet.getPort());
                         }
                     }
@@ -470,6 +549,11 @@ public class PTZCameraManager {
         }
     }
 
+    /**
+     * Initializes the UDP transport layer using the supplied application configuration.
+     *
+     * @param config active configuration
+     */
     public void initializeTransport (AppConfig config){
 
         DatagramSocket socket = null;
@@ -488,13 +572,22 @@ public class PTZCameraManager {
         }
     }
 
+    /**
+     * Validates transport configuration and creates a testable UDP socket instance.
+     * <p>The socket is created and bound but is not installed as the active manager transport.</p>
+     *
+     * @param config candidate configuration
+     * @return prepared socket
+     *
+     * @throws Exception if transport initialization fails
+     */
     public static DatagramSocket validateTransport(AppConfig config) throws Exception {
 
 
-        String localIp = String.valueOf(config.getSystem().getTransport().get("localIp"));
+        String localIp = String.valueOf(config.getSystem().getTransport().getLocalIp());
 
-        int localPort = (Integer) config.getSystem().getTransport().get("localPort");
-        if (localPort != 52381){
+        int localPort = config.getSystem().getTransport().getLocalPort();
+        if (localPort <= 0){
             localPort = 52381;
         }
 
@@ -505,6 +598,13 @@ public class PTZCameraManager {
         return socket;
     }
 
+    /**
+     * Replaces the active transport socket.     *
+     * <p>The previous socket is closed after the new socket has been successfully installed.</p>
+     *
+     * @param newSocket new transport socket
+     * @return operation result
+     */
     public ConfigurationUpdateResults updateTransportSocket(DatagramSocket newSocket) {
 
         ConfigurationUpdateResults results = new ConfigurationUpdateResults();
@@ -534,9 +634,6 @@ public class PTZCameraManager {
 
     private void shutdownTransport() {
 
-        //DEBUG
-        System.out.println("PTZ Manager Transport shutting down.");
-
         this.running = false;
 
         if (this.socket != null && !this.socket.isClosed()) {
@@ -557,24 +654,21 @@ public class PTZCameraManager {
         System.out.println("PTZ Manager Transport SOCKET CLOSED");
     }
 
+    /**
+     * Stops all managed camera activity and shuts down transport resources.
+     *
+     * <p>Each configured camera is first instructed to move to its configured park position before UDP resources are released.</p>
+     */
     public void shutdown(){
-
-        //DEBUG
-        System.out.println("PTZ Manager shutting down...");
 
         running = false;
         for (PTZCamera camera : cameras.values()){
             try{
-                //DEBUG
-                System.out.println("Park camera " + camera.getCameraId() + " on IP: " + camera.getIpAddress());
                 camera.parkCamera();
             }catch (Exception e){
                 LOGGER.warning("Unable to stop camera: " + camera.getCameraId());
             }
         }
-
-        //DEBUG
-        System.out.println("Parking camera completed");
 
         shutdownTransport();
         if (receiverThread != null) {

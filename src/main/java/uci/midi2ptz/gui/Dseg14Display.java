@@ -4,12 +4,35 @@ import javax.swing.*;
 import java.awt.*;
 import java.io.InputStream;
 
+/**
+ * 14-segment style display component based on the DSEG14 font family.
+ *
+ * <p>The component emulates a hardware LED/VFD display commonly found on broadcast equipment, MIDI controllers and PTZ control surfaces.</p>
+ *
+ * <p>The display renders three visual layers:</p> *
+ * <ul>
+ *     <li>a background segment mask,</li>
+ *     <li>a dim inactive segment layer,</li>
+ *     <li>an illuminated foreground value.</li>
+ * </ul>
+ *
+ * <p>This approach creates the appearance of a physical segmented display with inactive and active segments visible simultaneously.</p>
+ */
+
 public class Dseg14Display extends JPanel {
 
-    private final JLabel backgroundLabel;
-    private final JLabel middleLabel;
+    /**
+     * Active display layer containing the current value.
+     */
     private final JLabel foregroundLabel;
 
+
+    /**
+     * Creates a segmented display component.
+     *
+     * <p>The constructor loads the bundled DSEG14 font when available and automatically falls back to a monospaced system font if the font resource
+     * cannot be loaded.</p>
+     */
     public Dseg14Display() {
 
         setLayout(new OverlayLayout(this));
@@ -26,13 +49,13 @@ public class Dseg14Display extends JPanel {
             displayFont =new Font(Font.MONOSPACED,Font.BOLD,22);
         }
 
-        backgroundLabel = new JLabel("O");
+        JLabel backgroundLabel = new JLabel("O");
         backgroundLabel.setAlignmentX(0.5f);
         backgroundLabel.setAlignmentY(0.5f);
         backgroundLabel.setHorizontalAlignment(SwingConstants.CENTER);
         backgroundLabel.setForeground(new Color(15,15,15));
 
-        middleLabel = new JLabel("*");
+        JLabel middleLabel = new JLabel("*");
         middleLabel.setAlignmentX(0.5f);
         middleLabel.setAlignmentY(0.5f);
         middleLabel.setHorizontalAlignment(SwingConstants.CENTER);
@@ -56,18 +79,26 @@ public class Dseg14Display extends JPanel {
         add(backgroundLabel);
     }
 
+    /**
+     * Updates the displayed value.
+     *
+     * <p>The supplied value is automatically converted to upper case before being rendered.</p>
+     *
+     * @param value value to display
+     */
     public void setValue(String value) {
 
         if (value == null || value.isBlank()) {
-
             clear();
             return;
         }
-
         foregroundLabel.setText(value.toUpperCase()
         );
     }
 
+    /**
+     * Clears the display contents.
+     */
     public void clear() {
 
         foregroundLabel.setText(" ");

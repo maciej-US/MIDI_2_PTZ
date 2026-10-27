@@ -2,7 +2,7 @@ package uci.midi2ptz;
 
 import uci.midi2ptz.config.AppConfigManager;
 import uci.midi2ptz.config.ConfigurationUpdateResults;
-import uci.midi2ptz.core.ControlCore;
+import uci.midi2ptz.core.MainControlCore;
 import uci.midi2ptz.core.ControlEventBus;
 import uci.midi2ptz.gui.MainGUI;
 import uci.midi2ptz.midi.MidiControllerManager;
@@ -39,7 +39,7 @@ public class Midi2PTZ {
 
          PTZCameraManager cameraManager = new PTZCameraManager(eventBus, configManager);
 
-         MidiControllerManager midiManager = new MidiControllerManager(configManager, eventBus, ControlCore.RunMode.FULL);
+         MidiControllerManager midiManager = new MidiControllerManager(configManager, eventBus, MainControlCore.RunMode.FULL);
 
          configManager.setCameraManager(cameraManager);
          configManager.setMidiManager(midiManager);
@@ -56,8 +56,6 @@ public class Midi2PTZ {
          //========== FIRST LAUNCH CHECK ==================
 
          boolean firsLaunch = configManager.isFirstLaunch();
-
-         //DEBUG
 
          MainGUI gui = new MainGUI(
                          eventBus,
@@ -97,12 +95,12 @@ public class Midi2PTZ {
 
         midiManager.initialize();
 
-        ControlCore.RunMode mode =
+        MainControlCore.RunMode mode =
                 midiManager.isMidiControllerRunning()
-                        ? ControlCore.RunMode.FULL
-                        : ControlCore.RunMode.NO_HARDWARE;
+                        ? MainControlCore.RunMode.FULL
+                        : MainControlCore.RunMode.NO_HARDWARE;
 
-        ControlCore core = new ControlCore(
+        MainControlCore core = new MainControlCore(
                 configManager,
                 cameraManager,
                 midiManager,
@@ -140,10 +138,7 @@ public class Midi2PTZ {
 
             for (MidiDevice.Info info : infos) {
 
-                if (info.getName()
-                        .equalsIgnoreCase(deviceName)) {
-                    //DEBUG
-                    //System.out.println("KONSOLA AKTYWNA");
+                if (info.getName().equalsIgnoreCase(deviceName)) {
                     return true;
                 }
             }

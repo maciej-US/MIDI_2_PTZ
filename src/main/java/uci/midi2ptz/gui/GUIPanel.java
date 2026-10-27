@@ -14,8 +14,58 @@ import static uci.midi2ptz.core.ControlEvent.EventSource.GUI;
 import static uci.midi2ptz.core.ControlEvent.EventSource.SYSTEM;
 import static uci.midi2ptz.gui.ButtonLED.*;
 
+/**
+ * Main PTZ camera control panel.
+ *
+ * <p>This component implements a complete camera control surface  including PTZ movement, zoom, focus, exposure and white balance controls.</p>
+ *
+ * <p>The panel acts as both:</p> *
+ * <ul>
+ *     <li>a source of user-generated {@link ControlEvent}s,</li>
+ *     <li>a listener for system state updates received through the control event infrastructure.</li>
+ * </ul>
+ *
+ * <p>User interactions are translated into {@link ControlEvent} instances and published through the {@link ControlEventBus}.
+ * Incoming system events are used to synchronize GUI state with the current camera status.</p>
+ *
+ * <h2>Controlled Functions</h2> *
+ * <ul>
+ *     <li>Pan / Tilt control</li>
+ *     <li>Zoom control</li>
+ *     <li>Focus control</li>
+ *     <li>Exposure control</li>
+ *     <li>White balance control</li>
+ *     <li>Preset operations</li>
+ *     <li>Tally indication</li>
+ *     <li>Camera connection monitoring</li>
+ * </ul>
+ *
+ * <h2>Event Flow</h2> *
+ * <pre>
+ * User Action
+ *      |
+ *      v
+ * GUIPanel
+ *      |
+ *      v
+ * ControlEventBus
+ *      |
+ *      v
+ * ControlCore
+ *
+ * ------------------------
+ *
+ * Camera State Change
+ *      |
+ *      v
+ * ControlCore
+ *      |
+ *      v
+ * GUIPanel
+ * </pre>
+ */
 
-public class GUIPanel extends JPanel implements ControlEventListener{
+public class GUIPanel extends JPanel implements ControlEventListener {
 
     // ==================== GUI ELEMENTS ====================
 
@@ -63,10 +113,10 @@ public class GUIPanel extends JPanel implements ControlEventListener{
 
     // ==================== CORE INTERFACE ====================
 
-    private final ControlEventBus outputBus;
+    private final ControlEventBus eventBus;
     private final PTZCameraManager cameraManager;
     private final MidiControllerManager midiManager;
-    ControlCore.ControlPanelId panelId;
+    MainControlCore.ControlPanelId panelId;
     private volatile boolean initialized = false;
     private final AppConfigManager appConfigManager;
     private final MainGUI parentGUI;
@@ -74,21 +124,29 @@ public class GUIPanel extends JPanel implements ControlEventListener{
     private boolean lastOnline = true;
 
 
-    //============ CONSTRUCTOR ===================
+    /**
+     * Creates a camera control panel.
+     *
+     * @param panelId logical panel identifier
+     * @param outputBus application event bus
+     * @param parentGUI owning GUI instance
+     * @param cameraManager camera manager
+     * @param midiManager MIDI controller manager
+     * @param appConfigManager application configuration manager
+     */
 
-    public GUIPanel(ControlCore.ControlPanelId panelId, ControlEventBus outputBus, MainGUI parentGUI,
-                    PTZCameraManager cameraManger, MidiControllerManager midiManager, AppConfigManager appConfigManager) {
+    public GUIPanel(MainControlCore.ControlPanelId panelId, ControlEventBus outputBus, MainGUI parentGUI,
+                    PTZCameraManager cameraManager, MidiControllerManager midiManager, AppConfigManager appConfigManager) {
 
         super (new GridBagLayout());
-
-        //DEBUG:
-        //System.out.println("GUIPanel " + panelId + " constructor");
         this.parentGUI = parentGUI;
-        this.cameraManager = cameraManger;
+        this.cameraManager = cameraManager;
         this.midiManager = midiManager;
         this.panelId = panelId;
-        this.outputBus = outputBus;
+        this.eventBus = outputBus;
         this.appConfigManager = appConfigManager;
+
+        eventBus.register(this);
 
         initialize();
     }
@@ -98,10 +156,12 @@ public class GUIPanel extends JPanel implements ControlEventListener{
     //        INIT
     // ====================
 
+    /**
+     * Creates and configures all visual controls, event handlers and panel layout elements.
+     *
+     * <p>This method performs complete panel initialization and should only be called during construction.</p>
+     */
     private void initialize() {
-
-        //DEBUG
-        //System.out.println("GUIPanel " + panelId + " initialize");
 
         /* ===================================
             MAIN PANEL ELEMENTS DEFINITIONS
@@ -118,7 +178,7 @@ public class GUIPanel extends JPanel implements ControlEventListener{
                             "EXPOSURE_MODE",
                             1
                     );
-            outputBus.publish(event);
+            eventBus.publish(event);
         });
 
         //----- IRIS knob
@@ -135,7 +195,7 @@ public class GUIPanel extends JPanel implements ControlEventListener{
                             "EXPOSURE_IRIS",
                             value
                     );
-                    outputBus.publish(event);
+                    eventBus.publish(event);
                 }
         );
         //---- IRIS label
@@ -156,7 +216,7 @@ public class GUIPanel extends JPanel implements ControlEventListener{
                             "EXPOSURE_SHUTTER",
                             value
                     );
-                    outputBus.publish(event);
+                    eventBus.publish(event);
                 }
         );
 
@@ -178,7 +238,7 @@ public class GUIPanel extends JPanel implements ControlEventListener{
                             "EXPOSURE_COMPENSATION",
                             value
                     );
-                    outputBus.publish(event);
+                    eventBus.publish(event);
                 }
         );
 
@@ -202,11 +262,7 @@ public class GUIPanel extends JPanel implements ControlEventListener{
                             "WHITE_BALANCE_MODE",
                             value
                     );
-
-                    //DEBUG:
-                    //System.out.println("WHITE BALANCE MODE EVENT: "+ event);
-
-                    outputBus.publish(event);
+                    eventBus.publish(event);
                 }
         );
 
@@ -224,7 +280,7 @@ public class GUIPanel extends JPanel implements ControlEventListener{
                             "ONE_PUSH_WHITE_BALANCE_KEY",
                             1
                     );
-            outputBus.publish(event);
+            eventBus.publish(event);
         });
 
         //--- WB BLUE GAIN knob
@@ -240,7 +296,7 @@ public class GUIPanel extends JPanel implements ControlEventListener{
                             "WHITE_BALANCE_B_GAIN",
                             value
                     );
-                    outputBus.publish(event);
+                    eventBus.publish(event);
                 }
         );
 
@@ -262,7 +318,7 @@ public class GUIPanel extends JPanel implements ControlEventListener{
                             "WHITE_BALANCE_R_GAIN",
                             value
                     );
-                    outputBus.publish(event);
+                    eventBus.publish(event);
                 }
         );
 
@@ -286,9 +342,7 @@ public class GUIPanel extends JPanel implements ControlEventListener{
                                     "TILT",
                                     value
                             );
-                    //DEBUG:
-                    //System.out.println("PUBLISH: " + event.getAction()+ "  source = " + event.getEventSource());
-                    outputBus.publish(event);
+                    eventBus.publish(event);
                 }
         );
 
@@ -310,10 +364,7 @@ public class GUIPanel extends JPanel implements ControlEventListener{
                                     "ZOOM",
                                     value
                             );
-                    //DEBUG:
-                    //System.out.println("PUBLISH: " + event.getAction()+ "  source = " + event.getEventSource());
-
-                    outputBus.publish(event);
+                    eventBus.publish(event);
                 }
         );
 
@@ -336,10 +387,7 @@ public class GUIPanel extends JPanel implements ControlEventListener{
                                     "FOCUS",
                                     value
                             );
-                    //DEBUG:
-                    //System.out.println("PUBLISH: " + event.getAction()+ "  source = " + event.getEventSource());
-
-                    outputBus.publish(event);
+                    eventBus.publish(event);
                 }
         );
 
@@ -356,10 +404,7 @@ public class GUIPanel extends JPanel implements ControlEventListener{
                             "FOCUS_UP_KEY",
                             1
                     );
-            //DEBUG:
-            //System.out.println("PUBLISH: " + event.getAction()+ "  source = " + event.getEventSource());
-
-            outputBus.publish(event);
+            eventBus.publish(event);
         });
 
         // ---- FOCUS DOWN Button
@@ -371,10 +416,7 @@ public class GUIPanel extends JPanel implements ControlEventListener{
                             "FOCUS_DOWN_KEY",
                             1
                     );
-            //DEBUG:
-            //System.out.println("PUBLISH: " + event.getAction()+ "  source = " + event.getEventSource());
-
-            outputBus.publish(event);
+            eventBus.publish(event);
         });
 
         focusOnePushButton.setMode(LedMode.OFF);
@@ -386,9 +428,7 @@ public class GUIPanel extends JPanel implements ControlEventListener{
                             "ONE_PUSH_FOCUS_KEY",
                             1
                     );
-            //DEBUG:
-            //System.out.println("PUBLISH: " + event.getAction() + "  source = " + event.getEventSource());
-            outputBus.publish(event);
+            eventBus.publish(event);
         });
 
         // ==== JOG ====
@@ -402,7 +442,7 @@ public class GUIPanel extends JPanel implements ControlEventListener{
                                     "PAN",
                                     value
                             );
-                    outputBus.publish(event);
+                    eventBus.publish(event);
                 }
         );
 
@@ -417,10 +457,7 @@ public class GUIPanel extends JPanel implements ControlEventListener{
                             "AUTO_FOLLOW",
                             1
                     );
-            //DEBUG:
-            //System.out.println("PUBLISH: " + event.getAction()+ "  source = " + event.getEventSource());
-
-            outputBus.publish(event);
+            eventBus.publish(event);
         });
 
         // ---- FOCUS MODE Button
@@ -433,10 +470,7 @@ public class GUIPanel extends JPanel implements ControlEventListener{
                             "FOCUS_MODE",
                             1
                     );
-            //DEBUG:
-            //System.out.println("PUBLISH: " + event.getAction()+ "  source = " + event.getEventSource());
-
-            outputBus.publish(event);
+            eventBus.publish(event);
         });
 
         // ---- PTZ MODE BUTTON
@@ -448,10 +482,7 @@ public class GUIPanel extends JPanel implements ControlEventListener{
                             "PTZ_MODE",
                             1
                     );
-
-            //DEBUG:
-            //System.out.println("PUBLISH: " + event.getAction()+ "  source = " + event.getEventSource());
-            outputBus.publish(event);
+            eventBus.publish(event);
         });
 
 
@@ -467,7 +498,7 @@ public class GUIPanel extends JPanel implements ControlEventListener{
         midiLabel.setForeground(labelColor);
 
         midiPanelInfo = new Dseg14Display();
-        ControlCore.ControlPanelId midiBinding = midiManager.getMidiBinding(panelId);
+        MainControlCore.ControlPanelId midiBinding = midiManager.getMidiBinding(panelId);
         midiPanelInfo.setValue(midiBinding != null? midiBinding.toString() : null);
 
         //============== STATUS PANEL ELEMENTS
@@ -858,31 +889,30 @@ public class GUIPanel extends JPanel implements ControlEventListener{
 
         setVisible(true);
 
-        //DEBUG
-        //System.out.println("GUI Panel " + panelId + " Initialized");
         synchronizeIndicators();
         initialized = true;
     }
 
-    // ============================================
-    //        INCOMING ControlEvent HANDLING
-    // ============================================
-
+    /**
+     * Receives system-generated control events.
+     *
+     * <p>Only events assigned to this panel are processed.</p>
+     *
+     * <p>All GUI updates are forwarded to the Swing Event Dispatch Thread using {@link SwingUtilities#invokeLater(Runnable)}
+     * to preserve Swing thread safety.</p>
+     *
+     * @param event incoming control event
+     */
     @Override
     public void onControlEvent(ControlEvent event) {
 
         if (event.getPanel() != panelId){
             return;
         }
-
-        SwingUtilities.invokeLater(() -> handleControlEvent(event));
+        SwingUtilities.invokeLater(() -> updateFromEvent(event));
     }
 
-    public void handleControlEvent(ControlEvent event) {
-
-        //DEBUG
-       /* System.out.println("======= GUI panel " + panelId + " ============= \n->EVENT from: " + event.getEventSource() +
-                "  ACTION = " + event.getAction() + " PANEL: " + event.getPanel() + "   VALUE = " + event.getValue());*/
+    public void updateFromEvent(ControlEvent event) {
 
         if (!initialized) {
             return;
@@ -892,96 +922,94 @@ public class GUIPanel extends JPanel implements ControlEventListener{
             return;
         }
 
-        SwingUtilities.invokeLater(() -> {
+        switch (event.getAction()) {
 
-            switch (event.getAction()) {
+            case "PAN":
+                jogIndicator.setValueSilently(event.getValue());
+                break;
 
-                case "PAN":
-                    jogIndicator.setValueSilently(event.getValue());
-                    break;
+            case "TILT":
+                tiltSlider.setValueSilently(event.getValue());
+                break;
 
-                case "TILT":
-                    tiltSlider.setValueSilently(event.getValue());
-                    break;
+            case "ZOOM":
+                zoomSlider.setValueSilently(event.getValue());
+                break;
 
-                case "ZOOM":
-                    zoomSlider.setValueSilently(event.getValue());
-                    break;
+            case "FOCUS":
+                focusKnob.setValueSilently(event.getValue());
+                break;
 
-                case "FOCUS":
-                    focusKnob.setValueSilently(event.getValue());
-                    break;
+            case "EXPOSURE_COMPENSATION":
+            case "EXPOSURE_GAIN":
+                exposureCompensationKnob.setValueSilently(event.getValue());
+                break;
 
-                case "EXPOSURE_COMPENSATION":
-                case "EXPOSURE_GAIN":
-                    exposureCompensationKnob.setValueSilently(event.getValue());
-                    break;
+            case "EXPOSURE_SHUTTER":
+                shutterKnob.setValueSilently(event.getValue());
+                break;
 
-                case "EXPOSURE_SHUTTER":
-                    shutterKnob.setValueSilently(event.getValue());
-                    break;
+            case "EXPOSURE_IRIS":
+                irisKnob.setValueSilently(event.getValue());
+                break;
 
-                case "EXPOSURE_IRIS":
-                    irisKnob.setValueSilently(event.getValue());
-                    break;
+            case "WHITE_BALANCE_MODE":
+                updateWBModeSwitch(event.getValue());
+                break;
 
-                case "WHITE_BALANCE_MODE":
-                    updateWBModeSwitch(event.getValue());
-                    break;
+            case "WHITE_BALANCE_R_GAIN":
+                whiteBalanceRGainKnob.setValueSilently(event.getValue());
+                break;
 
-                case "WHITE_BALANCE_R_GAIN":
-                    whiteBalanceRGainKnob.setValueSilently(event.getValue());
-                    break;
+            case "WHITE_BALANCE_B_GAIN":
+                whiteBalanceBGainKnob.setValueSilently(event.getValue());
+                break;
 
-                case "WHITE_BALANCE_B_GAIN":
-                    whiteBalanceBGainKnob.setValueSilently(event.getValue());
-                    break;
+            case "WHITE_BALANCE_PUSH_INDICATOR":
+                handleWBOnePushStatus(event.getValue());
+                break;
 
-                case "WHITE_BALANCE_PUSH_INDICATOR":
-                    handleWBOnePushStatus(event.getValue());
-                    break;
+            case "ABSOLUTE_MODE_INDICATOR":
+                handleAbsoluteModeStatus(event.getValue());
+                break;
 
-                case "ABSOLUTE_MODE_INDICATOR":
-                    handleAbsoluteModeStatus(event.getValue());
-                    break;
+            case "AUTO_FOLLOW_INDICATOR":
+                handleAutoFollowStatus(event.getValue());
+                break;
 
-                case "AUTO_FOLLOW_INDICATOR":
-                    handleAutoFollowStatus(event.getValue());
-                    break;
+            case "EXPOSURE_MODE_INDICATOR":
+                handleExposureModeStatus(event.getValue());
+                break;
 
-                case "EXPOSURE_MODE_INDICATOR":
-                    handleExposureModeStatus(event.getValue());
-                    break;
+            case "ONE_PUSH_FOCUS_INDICATOR":
+                focusOnePushButton.setMode(
+                    switch (event.getValue()) {
+                        case 1 -> LedMode.ON;
+                        case 2 -> LedMode.BLINK;
+                        default -> LedMode.OFF;
+                    });
+                break;
 
-                case "ONE_PUSH_FOCUS_INDICATOR":
-                    focusOnePushButton.setMode(
-                        switch (event.getValue()) {
-                            case 1 -> LedMode.ON;
-                            case 2 -> LedMode.BLINK;
-                            default -> LedMode.OFF;
-                        });
+            case "FOCUS_MODE_INDICATOR":
+                handleFocusMode(event.getValue());
+                break;
 
-                case "FOCUS_MODE_INDICATOR":
-                    handleFocusMode(event.getValue());
-                    break;
+            case "TALLY_INDICATOR":
+                onAirIndicator.setOnAir(event.getValue() == 1);
+                break;
 
-                case "TALLY_INDICATOR":
-                    onAirIndicator.setOnAir(event.getValue() == 1);
-                    break;
+            //IGNORED EVENTS
+            case "CAM_SELECT_1_INDICATOR":
+            case "CAM_SELECT_2_INDICATOR":
+            case "CAM_SELECT_3_INDICATOR":
+            case "CAM_SELECT_4_INDICATOR":
+            case "PANEL_SELECT_INDICATOR":
 
-                //IGNORED EVENTS
-                case "CAM_SELECT_1_INDICATOR":
-                case "CAM_SELECT_2_INDICATOR":
-                case "CAM_SELECT_3_INDICATOR":
-                case "CAM_SELECT_4_INDICATOR":
-                case "PANEL_SELECT_INDICATOR":
+                break;
 
-                    break;
-
-                default:
-                    System.out.println("GUI => Unhandled event: " + event);
-            }
-        });
+            default:
+                System.out.println("GUI => Unhandled event: " + event);
+        }
     }
 
     // ====================
@@ -1121,7 +1149,11 @@ public class GUIPanel extends JPanel implements ControlEventListener{
         return this.midiPanelInfo;
     }
 
-    //=== STATUS INFO MANGEMENT
+    /**
+     * Refreshes camera status information displayed by the panel.
+     *
+     * <p>This includes connection state, camera description and reconnect controls.</p>
+     */
     public void refreshStatusInfo() {
 
         boolean online = cameraManager.isCameraOnline(panelId);
@@ -1146,12 +1178,6 @@ public class GUIPanel extends JPanel implements ControlEventListener{
         }
 
         lastOnline = online;
-
-        //DEBUG
-        /*System.out.println("Refresh panel " + panelId + " CAM STATUS ONLINE: " + cameraManager.isCameraOnline(panelId)
-                        + " HASH: " + System.identityHashCode(cameraManager.getCamera("CAM_" + panelId.toString())));*/
-
-
         String description = cameraManager.getCameraDescription(panelId);
 
         cameraLabel.setText(description != null
@@ -1160,6 +1186,9 @@ public class GUIPanel extends JPanel implements ControlEventListener{
 
     }
 
+    /**
+     * Requests reconnection of the camera assigned to this control panel.
+     */
     public void reconnectCamera() {
 
         PTZCamera camera = cameraManager.getCoreAssignedCamera(panelId);
@@ -1168,7 +1197,6 @@ public class GUIPanel extends JPanel implements ControlEventListener{
             return;
         }
         cameraManager.refreshConnection(panelId);
-
     }
 
     private void setPanelEnabled(boolean enabled) {
@@ -1214,11 +1242,16 @@ public class GUIPanel extends JPanel implements ControlEventListener{
         }
     }
 
+    /**
+     * Requests an immediate state refresh from the control subsystem.
+     *
+     * <p>A STATUS_REQUEST event is published to the control event bus.</p>
+     */
     private void requestStateRefresh() {
 
-        outputBus.publish(
+        eventBus.publish(
                 new ControlEvent(
-                        ControlEvent.EventSource.GUI,
+                        GUI,
                         panelId,
                         "STATUS_REQUEST",
                         0
@@ -1226,6 +1259,11 @@ public class GUIPanel extends JPanel implements ControlEventListener{
         );
     }
 
+    /**
+     * Synchronizes GUI indicators with the current cached camera state.
+     *
+     * <p>This method is typically executed after panel initialization.</p>
+     */
     private void synchronizeIndicators(){
 
         PTZCamera camera = cameraManager.getCoreAssignedCamera(panelId);

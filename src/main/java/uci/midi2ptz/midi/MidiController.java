@@ -1,9 +1,10 @@
 package uci.midi2ptz.midi;
 
 import lombok.Getter;
-import uci.midi2ptz.core.ControlCore;
+import uci.midi2ptz.core.MainControlCore;
 import uci.midi2ptz.core.ControlEvent;
 import uci.midi2ptz.core.ControlEventBus;
+import uci.midi2ptz.core.ControlEventListener;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -14,21 +15,48 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import static uci.midi2ptz.core.ControlEvent.EventSource.MIDI;
+import static uci.midi2ptz.core.ControlEvent.EventSource.SYSTEM;
 
+/**
+ * Central MIDI controller integration layer.
+ *
+ * <p>This class coordinates communication between physical MIDI hardware and the application control subsystem.</p>
+ *
+ * <p>It translates incoming MIDI messages into  {@link ControlEvent} instances and converts application events
+ * into hardware feedback such as LEDs, indicators and controller state updates.</p> *
+ * <h2>Main Responsibilities</h2> *
+ * <ul>
+ *     <li>MIDI input processing</li>
+ *     <li>MIDI output and LED feedback</li>
+ *     <li>Control-to-action translation</li>
+ *     <li>Jog wheel processing</li>
+ *     <li>Button debouncing</li>
+ *     <li>Runtime panel reassignment</li>
+ *     <li>Status synchronization</li>
+ * </ul>
+ *
+ * <p>The controller serves as the bridge between the physical MIDI device and the application event bus.</p>
+ */
 @Getter
-public class MidiController {
+public class MidiController implements ControlEventListener {
 
     private static final Logger LOGGER = Logger.getLogger(MidiController.class.getName());
     private MidiInputController midiInputController;
     private MidiOutputController midiOutputController;
     private final MidiConfig config;
-    private ControlEventBus outputBus;
-    private ControlCore.RunMode mode;
+    private final ControlEventBus outputBus;
+    private final MainControlCore.RunMode mode;
 
     private volatile boolean running = false;
+    /**
+     * Controls temporary event-capture mode used while requesting controller state information.
+     */
     private volatile boolean captureMode = false;
-    private ControlCore.ControlPanelId camLedAssignment;
-    private Thread inputThread;
+
+    /**
+     * Remembers the currently selected camera assignment panel used for camera-selection LEDs.
+     */
+    private MainControlCore.ControlPanelId camLedAssignment;
     private Thread controllerThread;
     private Thread jogWatchdogThread;
 
@@ -38,31 +66,43 @@ public class MidiController {
     private final Map<String, ScheduledFuture<?>> pendingTasks = new ConcurrentHashMap<>();
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
 
+    /**
+     * Reverse lookup table used for translating ControlEvents into MIDI control identifiers.
+     */
     private final Map<String, String> outputBindings = new HashMap<>();
 
     //Jog params
     private volatile long lastJogEventTime = 0;
     private volatile int lastJogValue = 64;
     private volatile ControlEvent lastJogEvent;
+
+    /**
+     * Watchdog timeout used to generate implicit jog-stop events when no further movement data is received.
+     */
     private static final long JOG_TIMEOUT_MS = 50;
     private final Set<Integer> jogCCNumbers = new HashSet<>();
 
     // API
     private final MidiControllerManager controllerManager;
 
-    public MidiController(
-            MidiConfig config,
-            int inputDeviceIndex,
-            int outputDeviceIndex,
-            ControlEventBus outputBus,
-            ControlCore.RunMode mode,
-            MidiControllerManager controllerManager) throws Exception {
+    /**
+     * Creates a MIDI controller instance.
+     *
+     * @param config MIDI controller configuration
+     * @param inputDeviceIndex MIDI input device index
+     * @param outputDeviceIndex MIDI output device index
+     * @param outputBus event bus used for publishing control events
+     * @param mode application runtime mode
+     * @param controllerManager MIDI controller manager
+     */
+    public MidiController(MidiConfig config, int inputDeviceIndex, int outputDeviceIndex, ControlEventBus outputBus,
+                          MainControlCore.RunMode mode, MidiControllerManager controllerManager) {
 
         this.mode = mode;
         this.config = config;
         this.outputBus = outputBus;
         this.controllerManager = controllerManager;
-        this.camLedAssignment = ControlCore.ControlPanelId.A;
+        this.camLedAssignment = MainControlCore.ControlPanelId.A;
 
         //Reverse binding index
         for (Map.Entry<String, MidiBindingDefinition> entry : config.getBindings().entrySet()) {
@@ -85,14 +125,23 @@ public class MidiController {
             }
         }
 
-        if (mode.equals(ControlCore.RunMode.FULL)){
+        if (mode.equals(MainControlCore.RunMode.FULL)){
             start();
         }
+
+        outputBus.register(this);
     }
 
+    /**
+     * Starts MIDI processing services.
+     *
+     * <p>The method initializes background worker threads responsible for handling incoming MIDI events and jog wheel timeout monitoring.</p>
+     *
+     * <p>After startup, incoming hardware events are translated into {@link ControlEvent} instances and forwarded to the application event bus.</p>
+     */
     public synchronized void start() {
 
-        if (mode == ControlCore.RunMode.NO_HARDWARE) {
+        if (mode == MainControlCore.RunMode.NO_HARDWARE) {
             return;
         }
 
@@ -102,11 +151,7 @@ public class MidiController {
 
         running = true;
 
-        /*
-         * Uruchomienie kontrolera wejścia MIDI
-         */
-        //inputThread = new Thread(midiInputController, "MIDI-INPUT" );
-
+        /* MIDI In initialize*/
         for (MidiControlDefinition control : config.getControls().values()) {
 
             if (!"jog".equalsIgnoreCase(control.getType())) {
@@ -116,37 +161,20 @@ public class MidiController {
             );
         }
 
-        /*inputThread.setDaemon(true);
-        inputThread.start();*/
-
-        /*
-         * Translacja MIDI -> ControlEvent
-         */
-
         controllerThread = new Thread(() -> {
                     while (running) {
                         try {
                             MidiEvent event = midiInputController.getEventQueue().take();
-                            //DEBUG
-                            //System.out.println( "EVENT IN -> " + event.getType() + "  " + event.getNumber() + "  " + event.getValue());
 
                             //Silent mode
                             if (captureMode) {
                                 statusQueue.offer(event);
-                                //DEBUG
-                                //System.out.println( "STATUS CAPUTRE -> " + event.getNumber() + "  " + event.getValue());
-
                                 continue;
                             }
-
-                            long now = System.currentTimeMillis();
 
                             ControlEvent controlEvent = translateInput(event);
 
                             if (controlEvent != null) {
-
-                                //DEBUG:
-                                //System.out.println("PUBLISH: " + controlEvent.getAction()+ "  source = " + controlEvent.getEventSource());
                                 if ("PAN".equals(controlEvent.getAction()) ||
                                         "TILT".equals(controlEvent.getAction()) ||
                                         "ZOOM".equals(controlEvent.getAction())) {
@@ -154,15 +182,12 @@ public class MidiController {
                                 } else {
                                     debounceControlEvent(controlEvent);
                                 }
-
-                                //DEBUG
-                                //System.out.println("MIDI Controller event controlID: " + controlEvent.getControlID());
                             }
 
                         } catch (InterruptedException e) {
                             break;
                         } catch (Exception e) {
-                            e.printStackTrace();
+                            LOGGER.warning("MIDI error: " + e.getMessage());
                         }
                     }
                 }, "MIDI-CONTROLLER" );
@@ -196,18 +221,13 @@ public class MidiController {
                                     lastJogEvent.getAction(),
                                     0
                             );
-
-                    //DEBUG:
-                    /*System.out.println("==== JOG TIMEOUT =====");
-                    System.out.println("PUBLISH: " + stopEvent.getAction()+ "  source = " + stopEvent.getEventSource());
-*/
                     outputBus.publish(stopEvent);
 
                     lastJogEvent = null;
                 } catch (InterruptedException ie){
                     break;
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    LOGGER.warning ("MIDI error: " + e.getMessage());
                 }
             }
 
@@ -220,16 +240,17 @@ public class MidiController {
         System.out.println("MIDI Controller started" );
     }
 
+    /**
+     * Stops MIDI processing and releases all hardware resources.
+     *
+     * <p>The controller threads are terminated, device connections are closed and internal queues are cleared.</p>
+     */
     public synchronized void shutdown() {
 
         running = false;
 
         lastJogEvent = null;
         lastJogEventTime = 0;
-
-        if (inputThread != null) {
-            inputThread.interrupt();
-        }
 
         if (controllerThread != null) {
             controllerThread.interrupt();
@@ -256,11 +277,15 @@ public class MidiController {
         System.out.println("MIDI controller stopped");
     }
 
+    /**
+     * Converts an incoming MIDI event into a logical  application control event.
+     *
+     * <p>The method resolves control bindings, panel assignments and special controller functions before generating a {@link ControlEvent}.</p>
+     *
+     * @param event received MIDI event
+     * @return translated control event or {@code null}
+     */
     private ControlEvent translateInput(MidiEvent event) {
-
-        //DEBUG
-        //System.out.println("====== MIDI INPUT =====\n Received: Type = " + event.getType() + "  | value = " + event.getValue());
-
 
         for (Map.Entry<String, MidiControlDefinition> entry : config.getControls().entrySet()) {
 
@@ -274,28 +299,24 @@ public class MidiController {
             MidiBindingDefinition binding = config.getBindings().get(controlId);
 
             if (binding == null) {
-                // brak mapowania na funkcję systemową
+                // MIDI value not mapped to system function
                 return null;
             }
 
-            //DEBUG
-            //System.out.println("Received: " + event.getType() + " | VAL: " + event.getValue() + " | CC " + event.getChannel()
-            //       + "\nBINDING: " + controlId + " =>> " + binding.getAction());
-
             //PANEL SWITCHING
             if ("PANEL_SELECT_A".equals(binding.getAction())) {
-                this.camLedAssignment = ControlCore.ControlPanelId.A;
-                reassignControls(ControlCore.ControlPanelId.A);
+                this.camLedAssignment = MainControlCore.ControlPanelId.A;
+                reassignControls(MainControlCore.ControlPanelId.A);
                 updateCueIndicators();
-                updateCameraIndicators(ControlCore.ControlPanelId.A);
+                updateCameraIndicators(MainControlCore.ControlPanelId.A);
                 return null;
             }
 
             if ("PANEL_SELECT_B".equals(binding.getAction())) {
-                this.camLedAssignment = ControlCore.ControlPanelId.B;
-                reassignControls(ControlCore.ControlPanelId.B);
+                this.camLedAssignment = MainControlCore.ControlPanelId.B;
+                reassignControls(MainControlCore.ControlPanelId.B);
                 updateCueIndicators();
-                updateCameraIndicators(ControlCore.ControlPanelId.B);
+                updateCameraIndicators(MainControlCore.ControlPanelId.B);
                 return null;
             }
 
@@ -308,12 +329,10 @@ public class MidiController {
 
             //MIDI Note control handling
             if ("note".equalsIgnoreCase(control.getMessageType())) {
-                int state = event.getValue() > 0 ? 1 : 0;
-                //DEBUG
-                //System.out.println ("======== MIDI CONTROLLER ======= \nnoteHandle: " + event.getNumber());
+                int state = event.value() > 0 ? 1 : 0;
                 return new ControlEvent(
                         MIDI,
-                        ControlCore.ControlPanelId.valueOf(binding.getPanel()),
+                        MainControlCore.ControlPanelId.valueOf(binding.getPanel()),
                         binding.getAction(),
                         state
                 );
@@ -321,43 +340,44 @@ public class MidiController {
                 //MIDI CC values handling
                 return new ControlEvent(
                         MIDI,
-                        ControlCore.ControlPanelId.valueOf(binding.getPanel()),
+                        MainControlCore.ControlPanelId.valueOf(binding.getPanel()),
                         binding.getAction(),
-                        event.getValue()
+                        event.value()
                 );
             }
         }
         return null;
     }
 
-    @SuppressWarnings("unchecked" )
+    /**
+     * Converts an application control event into MIDI feedback.
+     *
+     * <p>The generated output typically controls LEDs, indicators and hardware feedback elements.</p>
+     *
+     * @param control MIDI control definition
+     * @param event application event
+     */
     private void translateOutput(MidiControlDefinition control, ControlEvent event) {
 
-        //DEBUG
-       /* System.out.println("translate output from panel " + event.getPanel() + " ==> " + event.getAction());// + "  |  " + control.toString());
-        System.out.println("getMidiBinding("+ event.getPanel() + ")="  + controllerManager.getMidiBinding(event.getPanel()));*/
-
-        ControlCore.ControlPanelId outputPanel = event.getPanel();
+        MainControlCore.ControlPanelId outputPanel = event.getPanel();
 
         if (event.getAction().startsWith("CAM_SELECT_")
                 && event.getAction().endsWith("_INDICATOR")) {
 
-            ControlCore.ControlPanelId midiPanel = event.getPanel();
+            MainControlCore.ControlPanelId midiPanel = event.getPanel();
 
-            // kamera nie jest przypisana do żadnego panelu MIDI
+            // Camera not assigned to Midi
             if (midiPanel == null) {
                 return;
             }
 
-            // LED-y aktualnie pokazują inny panel MIDI
+            // Different LED assignement
             if (midiPanel != this.camLedAssignment) {
                 return;
             }
 
             outputPanel = camLedAssignment;
         }
-
-        //System.out.println("LEDS bindend to panel: " + camLedAssignment + "   |  event panel: " + event.getPanel() + "  | MIDI panel:" + outputPanel);
 
         String controlName = outputBindings.get(outputPanel + ":" + event.getAction());
 
@@ -369,9 +389,6 @@ public class MidiController {
         }
 
         MidiControlDefinition midiControl = config.getControls().get(controlName);
-        //Debug
-        //System.out.println("Binded Control : " + controlName + " MIDI CONTROL: " + midiControl.getChannel());
-
         if (midiControl == null) {
             LOGGER.log(Level.WARNING, "No MIDI definition for control: " + controlName);
             return;
@@ -411,38 +428,49 @@ public class MidiController {
         }
     }
 
+    /**
+     * Determines whether a MIDI event matches a control definition.
+     *
+     * @param control control definition
+     * @param event received MIDI event
+     * @return {@code true} if the event belongs to the control
+     */
     private boolean matches(MidiControlDefinition control, MidiEvent event) {
 
         if ("cc".equalsIgnoreCase(control.getMessageType())) {
-            return event.getType() == MidiEvent.Type.CC
+            return event.type() == MidiEvent.Type.CC
                     && control.getChannel() != null
-                    && control.getChannel() == event.getNumber();
+                    && control.getChannel() == event.number();
         }
 
         if ("note".equalsIgnoreCase(control.getMessageType())) {
 
-            return event.getType() == MidiEvent.Type.NOTE
+            return event.type() == MidiEvent.Type.NOTE
                     && control.getNote() != null
-                    && control.getNote() == event.getNumber();
+                    && control.getNote() == event.number();
         }
         return false;
     }
 
-    public void sendControlEvent(ControlEvent event) {
+    /**
+     * Processes an application event and converts it into MIDI feedback.
+     *
+     * <p>Depending on the event type, this may result in LED updates, indicator state changes, blinking effects or status requests
+     * sent to the physical controller.</p>
+     * @param event event received from the application
+     */
+    @Override
+    public void onControlEvent(ControlEvent event) {
 
-        //DEBUG
-        /*System.out.println(
-                "SEND EVENT\n" +
-                        "CORE PANEL = " + event.getPanel() +
-                        "\nMIDI PANEL = " + controllerManager.getMidiBinding(event.getPanel()) +
-                        "\nACTION = " + event.getAction()
-        );*/
+        if (event == null) {
+            return;
+        }
+
+        if (event.getEventSource() != SYSTEM){
+            return;
+        }
 
         if ("STATUS_REQUEST".equals(event.getAction())) {
-
-            //DEBUG
-            //System.out.println("============ MIDI CONTROLLER ===========\nCALL   -> " + event.getAction() + "  control: " + event.getControlID());
-
             captureMode = true;
             midiInputController.getEventQueue().clear();
             statusQueue.clear();
@@ -460,7 +488,6 @@ public class MidiController {
             return;
         }
 
-
         for (Map.Entry<String, MidiBindingDefinition> entry : config.getBindings().entrySet()) {
 
             if (!entry.getValue().getAction().equals(event.getAction())) {
@@ -476,6 +503,13 @@ public class MidiController {
         }
     }
 
+    /**
+     * Applies software debouncing to incoming control events.
+     *
+     * <p>If multiple events with the same action arrive within the debounce interval, only the last one is forwarded.</p>
+     *
+     * @param event event to debounce
+     */
     private void debounceControlEvent(ControlEvent event) {
 
         String key = event.getAction();
@@ -496,13 +530,17 @@ public class MidiController {
         pendingTasks.put(key, newTask);
     }
 
-    /* =================================
-               JOG HANDLING
-       ================================= */
-
+    /**
+     * Processes jog wheel movement events.
+     *
+     * <p>MIDI jog wheel values are converted into signed movement deltas and translated into application control events.</p>
+     *
+     * @param event MIDI input event
+     * @return generated control event or {@code null}
+     */
     private ControlEvent handleJog(MidiEvent event) {
 
-        int delta = event.getValue() - 64;
+        int delta = event.value() - 64;
 
         if (delta == 0) {
             return null;
@@ -530,7 +568,7 @@ public class MidiController {
 
             return new ControlEvent(
                     MIDI,
-                    ControlCore.ControlPanelId.valueOf(binding.getPanel()),
+                    MainControlCore.ControlPanelId.valueOf(binding.getPanel()),
                     binding.getAction(),
                     delta
             );
@@ -539,14 +577,17 @@ public class MidiController {
         return null;
     }
 
-    /* =================================
-          SYSTEM STATUS REQUEST HANDLING
-       =================================*/
-
+    /**
+     * Performs a MIDI controller status query.
+     *
+     * <p>The method temporarily enters capture mode and waits for the response generated by the controller hardware.</p>
+     *
+     * @param request status request event
+     * @return status response event or {@code null}
+     *
+     * @throws InterruptedException if the waiting thread is interrupted
+     */
     private ControlEvent handleStatusRequest(ControlEvent request) throws InterruptedException {
-
-        //DEBUG
-        //System.out.println("======== MIDI CONTROLLER ==========\nhandleStatusRequest  ->" + request.getControlID());
 
         statusQueue.clear();
 
@@ -572,7 +613,7 @@ public class MidiController {
         }
 
         if (requestControl == null) {
-            //System.out.println("Uknown request target value " + request.getControlID() + " -> " + request.getPanel().name());
+            LOGGER.info("Uknown request target value " + request.getAction() + " -> " + request.getPanel().name());
         }
 
         long timeout = System.currentTimeMillis() + 1000;
@@ -581,32 +622,22 @@ public class MidiController {
 
             MidiEvent midiEvent = statusQueue.poll(50, TimeUnit.MILLISECONDS);
 
-            if (midiEvent == null || midiEvent.getType() != MidiEvent.Type.CC) {
+            if (midiEvent == null || midiEvent.type() != MidiEvent.Type.CC) {
                 continue;
             }
-
-            //DEBUG
-            //System.out.println("CAPTURED MIDI:  " + midiEvent.getType() + "  " + midiEvent.getValue() + " LOOK for: " + request.getControlID());
 
             if (requestControl == null) {
-                //DEBUG
-                //System.out.println("EMPTY MIDI....");
                 continue;
             }
-            if (midiEvent.getNumber() != requestControl.getChannel()) {
-                //DEBUG
-                //System.out.println("NOT MATCHING INPUT....");
+            if (midiEvent.number() != requestControl.getChannel()) {
                 continue;
             }
-
-            //DEBUG:
-            //System.out.println("MATCHED. SENDING ControlEvent");
 
             ControlEvent response = new ControlEvent(
                     MIDI,
                     request.getPanel(),
                     "REQUEST_RESPONSE",
-                    midiEvent.getValue()
+                    midiEvent.value()
             );
 
             Thread.sleep(100);
@@ -618,12 +649,15 @@ public class MidiController {
         return null;
     }
 
-
-    /* =================================
-           DYNAMIC CONTROL SWITCHING
-      ================================== */
-
-    private void reassignControls(ControlCore.ControlPanelId panel) {
+    /**
+     * Reassigns all dynamic controls to a different logical panel.
+     *
+     * <p>Only bindings marked as reassignable are affected.</p>
+     * <p>This mechanism allows a single physical controller section to operate on different cameras during runtime.</p>
+     *
+     * @param panel target control panel
+     */
+    private void reassignControls(MainControlCore.ControlPanelId panel) {
 
         String targetPanel = panel.name();
 
@@ -642,30 +676,40 @@ public class MidiController {
 
     }
 
+    /**
+     * Updates controller panel-selection indicators.
+     *
+     * <p>The active panel indicator is enabled while inactive panel indicators are disabled.</p>
+     */
     private void updateCueIndicators() {
 
-        sendControlEvent(
+        outputBus.publish(
                 new ControlEvent(
-                        MIDI,
-                        ControlCore.ControlPanelId.A,
+                        SYSTEM,
+                        MainControlCore.ControlPanelId.A,
                         "PANEL_SELECT_INDICATOR",
-                        this.camLedAssignment == ControlCore.ControlPanelId.A ? 1 : 0
+                        this.camLedAssignment == MainControlCore.ControlPanelId.A ? 1 : 0
                 )
         );
 
-        sendControlEvent(
+        outputBus.publish(
                 new ControlEvent(
-                        MIDI,
-                        ControlCore.ControlPanelId.B,
+                        SYSTEM,
+                        MainControlCore.ControlPanelId.B,
                         "PANEL_SELECT_INDICATOR",
-                        this.camLedAssignment == ControlCore.ControlPanelId.B ? 1 : 0
+                        this.camLedAssignment == MainControlCore.ControlPanelId.B ? 1 : 0
                 )
         );
     }
 
-    public void updateCameraIndicators(ControlCore.ControlPanelId selectedPanel) {
+    /**
+     * Updates camera selection indicators for the specified MIDI panel.
+     *
+     * @param selectedPanel panel whose indicators should be updated
+     */
+    public void updateCameraIndicators(MainControlCore.ControlPanelId selectedPanel) {
 
-        ControlCore.ControlPanelId guiBinding = controllerManager.getCoreBinding(selectedPanel);
+        MainControlCore.ControlPanelId guiBinding = controllerManager.getCoreBinding(selectedPanel);
 
         int activeIndex = -1;
 
@@ -674,12 +718,12 @@ public class MidiController {
         }
 
         for (int i = 0;
-             i < ControlCore.ControlPanelId.values().length;
+             i < MainControlCore.ControlPanelId.values().length;
              i++) {
 
-            sendControlEvent(
+            outputBus.publish(
                     new ControlEvent(
-                            MIDI,
+                            SYSTEM,
                             selectedPanel,
                             "CAM_SELECT_" + (i + 1) + "_INDICATOR",
                             i == activeIndex ? 1 : 0
@@ -688,7 +732,13 @@ public class MidiController {
         }
     }
 
-    public void clearPanel(ControlCore.ControlPanelId panelId) {
+    /**
+     * Clears indicators associated with a logical panel.
+     *
+     * <p>All MIDI controls currently assigned to the specified panel are reset to their inactive state.</p>     *
+     * @param panelId panel to clear
+     */
+    public void clearPanel(MainControlCore.ControlPanelId panelId) {
 
         Map<String, MidiBindingDefinition> bindings = config.getBindings();
 
@@ -698,11 +748,11 @@ public class MidiController {
                 continue;
             }
             ControlEvent event = new ControlEvent(
-                    MIDI,
+                    SYSTEM,
                     panelId,
                     binding.getAction(),
                     0);
-            sendControlEvent (event);
+            outputBus.publish (event);
         }
     }
 

@@ -6,7 +6,7 @@ import uci.midi2ptz.midi.MidiController;
 import java.io.File;
 import java.util.concurrent.BlockingQueue;
 
-import static uci.midi2ptz.core.ControlCore.RunMode.FULL;
+import static uci.midi2ptz.core.MainControlCore.RunMode.FULL;
 
 public class MidiInputTest {
 
