@@ -179,8 +179,7 @@ public class SettingsDialog extends JDialog {
             }
         }
         inputComboBox = new JComboBox<>(inputModel);
-        String configuredInput =
-                midi.getInput().getDeviceName();
+        String configuredInput =midi.getJavaMidi().getInputDeviceName();
 
         if (configuredInput != null) {
             for (int i = 0; i < inputComboBox.getItemCount(); i++) {
@@ -201,7 +200,7 @@ public class SettingsDialog extends JDialog {
             }
         }
         outputComboBox = new JComboBox<>(outputModel);
-        String configuredOutput = midi.getOutput().getDeviceName();
+        String configuredOutput = midi.getJavaMidi().getOutputDeviceName();
         if (configuredOutput != null) {
             for (int i = 0; i < outputComboBox.getItemCount(); i++) {
                 MidiDeviceInfo device = outputComboBox.getItemAt(i);
@@ -212,7 +211,7 @@ public class SettingsDialog extends JDialog {
             }
         }
 
-        midiMappingFileField = new JTextField(config.getSystem().getMidi().getInput().getConfigFile());
+        midiMappingFileField = new JTextField(midi.getController().getConfigFile());
 
         JButton browseButton = new JButton("Przeglądaj...");
         browseButton.addActionListener(e -> {
@@ -639,28 +638,43 @@ public class SettingsDialog extends JDialog {
         }
 
         //MIDI TAB
-        MidiDeviceInfo input = (MidiDeviceInfo) inputComboBox.getSelectedItem();
-        if (input != null) {
-            config.getSystem().getMidi().getInput().setDeviceName(input.deviceName());
-            config.getSystem().getMidi().getInput().setDeviceIndex(input.deviceIndex());
-        } else {
-            config.getSystem().getMidi().getInput().setDeviceName(null);
-            config.getSystem().getMidi().getInput().setDeviceIndex(-1);
+
+        AppConfig.MidiConfig midi = config.getSystem().getMidi();
+
+        midi.getController().setConfigFile(midiMappingFileField.getText().trim());
+
+        switch (midi.getMidiTransport()) {
+            case GENERAL_MIDI:
+                MidiDeviceInfo input = (MidiDeviceInfo) inputComboBox.getSelectedItem();
+
+                if (input != null) {
+                    midi.getController().setDeviceName(input.deviceName());
+                    midi.getJavaMidi().setInputDeviceIndex(input.deviceIndex());
+
+                } else {
+                    midi.getJavaMidi().setInputDeviceIndex(-1);
+                }
+
+                MidiDeviceInfo output = (MidiDeviceInfo) outputComboBox.getSelectedItem();
+
+                if (output != null) {
+                    midi.getJavaMidi().setOutputDeviceIndex(output.deviceIndex());
+                } else {
+                    midi.getJavaMidi().setOutputDeviceIndex(-1);
+                }
+                break;
+
+            case USB_DIRECT:
+
+                /*midi.getUsbDirect().setVid(Integer.parseInt(usbVidField.getText().trim()));
+                midi.getUsbDirect().setPid(Integer.parseInt(usbPidField.getText().trim()));
+
+                midi.getUsbDirect().setInterfaceNumber(Integer.parseInt(usbInterfaceField.getText().trim()));
+                midi.getUsbDirect().setInputEndpoint(Integer.parseInt(usbInputEndpointField.getText().trim()));
+
+                midi.getUsbDirect().setOutputEndpoint(Integer.parseInt(usbOutputEndpointField.getText().trim()));*/
+                break;
         }
-
-        MidiDeviceInfo output = (MidiDeviceInfo) outputComboBox.getSelectedItem();
-        if (output != null) {
-            config.getSystem().getMidi().getOutput().setDeviceName(output.deviceName());
-            config.getSystem().getMidi().getOutput().setDeviceIndex(output.deviceIndex());
-        } else {
-            config.getSystem().getMidi().getOutput().setDeviceName(null);
-            config.getSystem().getMidi().getOutput().setDeviceIndex(-1);
-        }
-
-        String configFile = midiMappingFileField.getText();
-
-        config.getSystem().getMidi().getInput().setConfigFile(configFile);
-        config.getSystem().getMidi().getOutput().setConfigFile(configFile);
 
         return config;
 

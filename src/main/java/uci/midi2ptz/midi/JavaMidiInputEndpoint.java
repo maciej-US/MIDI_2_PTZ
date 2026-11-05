@@ -35,10 +35,10 @@ import java.util.concurrent.LinkedBlockingQueue;
  * MidiController
  * </pre>
  */
-public class MidiInputController implements Receiver {
+public class JavaMidiInputEndpoint implements MidiInputEndpoint, Receiver{
 
     private final int deviceIndex;
-    private final MidiDevice device;
+    private MidiDevice device;
 
     /**
      * Queue containing translated MIDI events.
@@ -61,23 +61,23 @@ public class MidiInputController implements Receiver {
      * <p>The specified MIDI device is opened and, when running in {@link MainControlCore.RunMode#FULL} mode, this class is registered
      * as its message receiver.</p>
      *
-     * @param deviceIndex index of the MIDI device reported by the Java MIDI subsystem
-     * @param mode application runtime mode
+     * @param deviceIndex index of the MIDI device reported by the Java MIDI subsystem     *
      *
      * @throws Exception if the device cannot be opened or initialized
      */
-    public MidiInputController(int deviceIndex, MainControlCore.RunMode mode) throws Exception {
+    public JavaMidiInputEndpoint(int deviceIndex) throws Exception {
 
         this.deviceIndex = deviceIndex;
+    }
+
+    @Override
+    public void start() throws Exception {
 
         MidiDevice.Info[] devices = MidiSystem.getMidiDeviceInfo();
         this.device = MidiSystem.getMidiDevice(devices[deviceIndex]);
         device.open();
         Transmitter transmitter = device.getTransmitter();
-
-        if (mode == MainControlCore.RunMode.FULL) {
-            transmitter.setReceiver(this);
-        }
+        transmitter.setReceiver(this);
 
     }
 
@@ -100,33 +100,7 @@ public class MidiInputController implements Receiver {
             return;
         }
 
-        MidiEvent event = null;
-
-        int channel = sm.getChannel() + 1;
-        int command =sm.getCommand();
-        int number = sm.getData1();
-        int value = sm.getData2();
-
-        if (command == ShortMessage.CONTROL_CHANGE) {
-            event = new MidiEvent(
-                    MidiEvent.Type.CC,
-                    channel,
-                    number,
-                    value,
-                    Integer.toString(this.deviceIndex)
-            );
-        }
-
-        else if (command == ShortMessage.NOTE_ON || command == ShortMessage.NOTE_OFF) {
-
-            event = new MidiEvent(
-                        MidiEvent.Type.NOTE,
-                        channel,
-                        number,
-                        value,
-                        Integer.toString(this.deviceIndex)
-            );
-        }
+        MidiEvent event = MidiEventParser.fromShortMessage(sm, Integer.toString(deviceIndex));
 
         if (event != null) {
             eventQueue.offer(event);

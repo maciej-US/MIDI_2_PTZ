@@ -381,6 +381,62 @@
       ]
     },
 
+    "tallyOn": {
+      "type": "command",
+      "description": "Tally ON",
+      "commandTemplate": [
+        "81",
+        "01",
+        "04",
+        "3F",
+        "01",
+        "60",
+        "FF"
+      ]
+    },
+
+    "tallyOff": {
+      "type": "command",
+      "description": "Tally OFF",
+      "commandTemplate": [
+        "81",
+        "01",
+        "04",
+        "3F",
+        "01",
+        "61",
+        "FF"
+      ]
+    },
+
+    "autoFollowOn": {
+      "type": "command",
+      "description": "Auto Follow ON",
+      "commandTemplate": [
+        "81",
+        "01",
+        "04",
+        "3F",
+        "01",
+        "A8",
+        "FF"
+      ]
+    },
+
+    "autoFollowOff": {
+      "type": "command",
+      "description": "Auto Follow OFF",
+      "commandTemplate": [
+        "81",
+        "01",
+        "04",
+        "3F",
+        "01",
+        "A9",
+        "FF"
+      ]
+    },
+
     "recallPreset": {
       "type": "command",
       "description": "Camera preset and special function recall",

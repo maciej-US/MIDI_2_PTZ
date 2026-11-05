@@ -1,6 +1,7 @@
 package uci.midi2ptz.midi;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.usb4java.*;
 import uci.midi2ptz.config.AppConfig;
 import uci.midi2ptz.config.AppConfigManager;
 import uci.midi2ptz.config.ConfigurationUpdateResults;
@@ -52,6 +53,7 @@ import static uci.midi2ptz.core.MainControlCore.LOGGER;
 public class MidiControllerManager {
 
 
+
     //API ELEMTS
     private final AppConfigManager configManager;
     private final ControlEventBus eventBus;
@@ -59,6 +61,7 @@ public class MidiControllerManager {
 
     //MIDI
     private MidiController controller;
+
 
     /**
      * Mapping between physical MIDI panels and logical application control panels.
@@ -133,16 +136,27 @@ public class MidiControllerManager {
                         .getSystem()
                         .getMidi();
 
-        return midi != null
-                && midi.getInput() != null
-                && midi.getOutput() != null
-                && midi.getInput().getDeviceIndex() >= 0
-                && midi.getOutput().getDeviceIndex() >= 0
-                && midi.getInput().getConfigFile() != null
-                && !midi.getInput()
-                .getConfigFile()
-                .isBlank();
-    }
+        if (midi == null ||
+                midi.getMidiTransport() == null ||
+                midi.getController() == null ||
+                midi.getController().getConfigFile() == null ||
+                midi.getController().getConfigFile().isBlank()) {
+            return false;
+        }
+
+            return switch (midi.getMidiTransport()) {
+                case GENERAL_MIDI -> midi.getJavaMidi() != null
+                        && midi.getJavaMidi().getInputDeviceIndex() >= 0
+                        && midi.getJavaMidi().getOutputDeviceIndex() >= 0;
+                case USB_DIRECT -> midi.getUsbDirect() != null
+                        && midi.getUsbDirect().getVid() > 0
+                        && midi.getUsbDirect().getPid() > 0
+                        && midi.getUsbDirect().getInterfaceNumber() >= 0
+                        && midi.getUsbDirect().getInputEndpoint() != 0
+                        && midi.getUsbDirect().getOutputEndpoint() != 0;
+                default -> false;
+            };
+        }
 
     /**
      * Verifies that the configured MIDI device is currently
@@ -152,15 +166,30 @@ public class MidiControllerManager {
      */
     private boolean isAvailable() {
 
-        String deviceName =
+        AppConfig.MidiConfig midi =
                 configManager
                         .getConfig()
                         .getSystem()
-                        .getMidi()
-                        .getInput()
-                        .getDeviceName();
+                        .getMidi();
 
-        return isMidiDeviceAvailable(deviceName);
+        if (midi == null ||
+                midi.getMidiTransport() == null) {
+            return false;
+        }
+
+        switch (midi.getMidiTransport()) {
+
+            case GENERAL_MIDI:
+                String deviceName = midi.getController().getDeviceName();
+                return deviceName != null && isMidiDeviceAvailable(deviceName);
+
+            case USB_DIRECT:
+                return isUsbDeviceAvailable((short) midi.getUsbDirect().getVid(), (short) midi.getUsbDirect().getPid());
+
+            default:
+
+                return false;
+        }
     }
 
     /**
@@ -194,26 +223,17 @@ public class MidiControllerManager {
 
         try {
 
-            AppConfig config = configManager.getConfig();
+            AppConfig appConfig = configManager.getConfig();
 
-            AppConfig.MidiEndpoint input =
-                    config.getSystem()
-                            .getMidi()
-                            .getInput();
-
-            AppConfig.MidiEndpoint output =
-                    config.getSystem()
-                            .getMidi()
-                            .getOutput();
+            AppConfig.MidiConfig midi = appConfig.getSystem().getMidi();
 
             ObjectMapper mapper = new ObjectMapper();
 
-            MidiConfig midiConfig = mapper.readValue(new File(input.getConfigFile()), MidiConfig.class);
+            MidiConfig midiConfig = mapper.readValue(new File(midi.getController().getConfigFile()), MidiConfig.class);
 
             controller = new MidiController(
+                            configManager.getConfig(),
                             midiConfig,
-                            output.getDeviceIndex(),
-                            input.getDeviceIndex(),
                             eventBus,
                             runMode,
                             this
@@ -221,7 +241,7 @@ public class MidiControllerManager {
 
            //=== MIDI BINGIGS TO CORE PANELS
             clearBindings();
-            for (AppConfig.CameraConfig cameraConfig : config.getSystem().getCameras()){
+            for (AppConfig.CameraConfig cameraConfig : appConfig.getSystem().getCameras()){
                 String midiPanel = cameraConfig.getAssignedMidiPanel();
                 String corePanel = cameraConfig.getAssignedGuiPanel();
 
@@ -237,7 +257,7 @@ public class MidiControllerManager {
 
         } catch (Exception e) {
             controller = null;
-            LOGGER.warning (e.getMessage());
+            LOGGER.warning("Unable to initialize controller: " + e.getMessage());
         }
     }
 
@@ -346,23 +366,50 @@ public class MidiControllerManager {
      */
     public static void validateConfiguration(AppConfig config, MainControlCore.RunMode mode) throws Exception {
 
-        AppConfig.MidiEndpoint input = config.getSystem().getMidi().getInput();
-        AppConfig.MidiEndpoint output = config.getSystem().getMidi().getOutput();
-
         ObjectMapper mapper = new ObjectMapper();
 
-        MidiConfig midiConfig = mapper.readValue(new File(input.getConfigFile()), MidiConfig.class);
-
-        MidiController controller =
-                new MidiController(
-                        midiConfig,
-                        output.getDeviceIndex(),
-                        input.getDeviceIndex(),
-                        null,
-                        mode,
-                        null
+        MidiConfig midiConfig = mapper.readValue(
+                        new File(config.getSystem().getMidi().getController().getConfigFile()),
+                        MidiConfig.class
                 );
 
+        MidiController controller = new MidiController(config, midiConfig, null, mode, null);
+
         controller.shutdown();
+    }
+
+    private boolean isUsbDeviceAvailable(short vid, short pid) {
+
+        Context context = new Context();
+
+        try {
+            int rc = LibUsb.init(context);
+            if (rc != LibUsb.SUCCESS) {
+                return false;
+            }
+
+            DeviceList list = new DeviceList();
+
+            try {
+                LibUsb.getDeviceList(context, list);
+
+                for (Device device : list) {
+                    DeviceDescriptor descriptor = new DeviceDescriptor();
+                    if (LibUsb.getDeviceDescriptor(device, descriptor) != LibUsb.SUCCESS) {
+                        continue;
+                    }
+
+                    if ((descriptor.idVendor() & 0xFFFF) == (vid & 0xFFFF) && (descriptor.idProduct() & 0xFFFF) == (pid & 0xFFFF)) {
+                        return true;
+                    }
+                }
+
+            } finally {
+                LibUsb.freeDeviceList(list, true);
+            }
+        } finally {
+            LibUsb.exit(context);
+        }
+        return false;
     }
 }

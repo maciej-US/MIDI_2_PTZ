@@ -1,5 +1,6 @@
 package uci.midi2ptz.core;
 
+import uci.midi2ptz.config.AppConfig;
 import uci.midi2ptz.config.AppConfigManager;
 import uci.midi2ptz.gui.MainGUI;
 import uci.midi2ptz.midi.MidiController;
@@ -203,7 +204,8 @@ public class MainControlCore implements ControlEventListener{
      */
     public void start() {
 
-        if (mode != RunMode.NO_HARDWARE && midiController != null) {
+        if (configManager.getConfig().getSystem().getRunMode() == RunMode.FULL
+                && midiController != null) {
             midiController.start();
         }
 
@@ -1339,8 +1341,15 @@ public class MainControlCore implements ControlEventListener{
 
     private void initializeStatusIndicators(ControlPanel panel) {
 
+        //debug
+        System.out.println("RunMode: " + configManager.getConfig().getSystem().getRunMode());
+
+
+
         if (midiManager.getMidiBinding(panel.getId()) == null ){
-            midiManager.getMidiController().clearPanel(panel.getId());
+            if (configManager.getConfig().getSystem().getRunMode() != RunMode.NO_HARDWARE ) {
+                midiManager.getMidiController().clearPanel(panel.getId());
+            }
             updateCameraIndicators();
         }
 
@@ -1411,7 +1420,7 @@ public class MainControlCore implements ControlEventListener{
 
     private void updateCameraIndicators() {
 
-        if(mode != RunMode.FULL){
+        if(configManager.getConfig().getSystem().getRunMode() != RunMode.FULL){
             return;
         }
 
@@ -1662,7 +1671,7 @@ public class MainControlCore implements ControlEventListener{
         if (this.gui != null) {
             initializeStatusIndicators();
         }
-        if (mode == RunMode.FULL){
+        if (configManager.getConfig().getSystem().getRunMode() == RunMode.FULL){
             updateCameraIndicators();
         }
     }
@@ -1706,7 +1715,7 @@ public class MainControlCore implements ControlEventListener{
 
         ControlPanelId midiPanel = midiManager.getMidiBinding(event.getPanel());
 
-        if (midiPanel != null && mode == RunMode.FULL) {
+        if (midiPanel != null && configManager.getConfig().getSystem().getRunMode() == RunMode.FULL) {
 
             ControlEvent midiEvent = new ControlEvent(
                     SYSTEM,

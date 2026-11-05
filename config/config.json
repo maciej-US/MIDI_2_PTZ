@@ -1,0 +1,40 @@
+{
+  "system" : {
+    "midi": {
+      "midiTransport": "USB_DIRECT",
+      "controller": {
+        "deviceName": "BCD3000",
+        "configFile": "config/BCD3000.json"
+      },
+      "javaMidi": {
+        "inputDeviceIndex": 4,
+        "outputDeviceIndex": 5
+      },
+      "usbDirect": {
+        "vid": 5015,
+        "pid": 191,
+        "interfaceNumber": 3,
+        "inputEndpoint": 129,
+        "outputEndpoint": 1
+      }
+    },
+    "cameras" : [ {
+      "cameraId" : "CAM_A",
+      "displayName" : "Kamera A",
+      "ipAddress" : "100.75.75.100",
+      "port" : 52381,
+      "viscaDefinition" : "C:/GIT/BCD2PTZ/BCD2PTZ/src/main/resources/AVER_PTZ310.json",
+      "assignedGuiPanel" : "A",
+      "assignedMidiPanel" : "A"
+    } ],
+    "transport" : {
+      "socketTimeout" : 150,
+      "autoIp" : false,
+      "localIp" : "100.75.75.78",
+      "localPort" : 52381
+    },
+    "guiConstrains": {}
+  },
+  "user" : { },
+  "presets" : { }
+}

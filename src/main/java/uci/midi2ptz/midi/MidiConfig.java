@@ -87,4 +87,5 @@ public class MidiConfig {
      * converting MIDI movement data into camera position changes.</p>
      */
     private Integer jogResolution;
+
 }

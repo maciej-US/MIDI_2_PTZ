@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
 import lombok.Getter;
 import lombok.Setter;
+import uci.midi2ptz.core.MainControlCore;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -27,6 +28,10 @@ import java.util.Map;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class AppConfig {
 
+    public enum MidiTransport{
+        GENERAL_MIDI,
+        USB_DIRECT
+    }
 
     /** System-level application configuration.*/
     @Getter @Setter
@@ -77,6 +82,10 @@ public class AppConfig {
 
         /** Network transport configuration.*/
         private Transport transport = new Transport();
+
+        /** Network transport configuration.*/
+        private MainControlCore.RunMode runMode = MainControlCore.RunMode.FULL;
+
     }
 
     /**
@@ -96,33 +105,58 @@ public class AppConfig {
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class MidiConfig {
 
+        private MidiTransport midiTransport;
+
+        /** Controller mapping definition.*/
+        private ControllerDefinition controller;
+
+        /** Java MIDI transport configuration.*/
+        private JavaMidiTransportConfig javaMidi;
+
+        /** Direct USB transport configuration.*/
+        private UsbDirectTransportConfig usbDirect;
+
         /** MIDI input device configuration.*/
-        private MidiEndpoint input = new MidiEndpoint();
+        //private MidiEndpoint input = new MidiEndpoint();
 
         /** MIDI output device configuration.*/
-        private MidiEndpoint output = new MidiEndpoint();
+        //private MidiEndpoint output = new MidiEndpoint();
     }
 
-    /**
-     * Represents a MIDI input or output endpoint.
-     *
-     * <p>An endpoint describes a physical or virtual MIDI device
-     * accessible through the operating system MIDI API.</p>
-     */
     @Data
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class MidiEndpoint {
+    public static class ControllerDefinition {
 
-        /** Human-readable MIDI device name as reported by the operating system.*/
         private String deviceName;
 
-        /** Numerical MIDI device index returned by the MIDI API.         *
-         * <p>This value can be used as an alternative device identification method when device names are not unique.</p>*/
-        private int deviceIndex;
-
-        /** Path to a device-specific MIDI mapping definition file.*/
         private String configFile;
 
+        private boolean hardwareBlinking;
+    }
+
+    @Data
+    public static class JavaMidiTransportConfig {
+
+        private String inputDeviceName;
+
+        private String outputDeviceName;
+
+        private int inputDeviceIndex;
+
+        private int outputDeviceIndex;
+    }
+
+    @Data
+    public static class UsbDirectTransportConfig {
+
+        private int vid;
+
+        private int pid;
+
+        private int interfaceNumber;
+
+        private int inputEndpoint;
+
+        private int outputEndpoint;
     }
 
     /**

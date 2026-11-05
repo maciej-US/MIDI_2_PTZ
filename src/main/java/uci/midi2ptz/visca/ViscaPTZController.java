@@ -341,9 +341,12 @@ public class ViscaPTZController {
         try {
             byte [] response = executeViscaInquiry("panTiltPositionRequest");
 
-            if (response == null || response.length < 10){
-                LOGGER.log(Level.WARNING, "No valid PAN/TILT inquiry response received");
+            if (response == null){
+                LOGGER.log(Level.WARNING, "No PAN/TILT inquiry response received");
                 camera.markOffline();
+                //DEBUG
+                LOGGER.severe("CAMERA OFFLINE FROM: " + Thread.currentThread().getName());
+                new Exception("OFFLINE TRACE").printStackTrace();
                 cameraManager.notifyCameraStatusChanged(camera, false);
                 return false;
             }

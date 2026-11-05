@@ -234,10 +234,9 @@ public class MainGUI implements Runnable{
             if (camera == null) {
                 continue;
             }
-            System.out.println("ADD CAMERA " + camera.getCameraId() + " HASH=" + System.identityHashCode(camera));
 
-            if (!first) {contentPanel.add(new VerticalSeparator());
-
+            if (!first) {
+                contentPanel.add(new VerticalSeparator());
             }
 
             contentPanel.add(createPanel(panelId));

@@ -415,7 +415,7 @@ public class AppConfigManager {
 
             try {
                 //--- Midi Config file
-                String mappingPath = midiConfig.getInput().getConfigFile();
+                String mappingPath = midiConfig.getController().getConfigFile();
                 if (mappingPath == null || mappingPath.isBlank()) {
                     throw new IllegalArgumentException("Brak ścieżki pliku konfiguracji MIDI");
                 }
@@ -524,7 +524,7 @@ public class AppConfigManager {
         if (updateMode == UpdateMode.INITIAL_LOAD) {
             try {
                 cameraManager.initializeTransport(this.config);
-                results = startRuntime(gui, this, cameraManager, midiManager, eventBus);
+                //results = startRuntime(gui, this, cameraManager, midiManager, eventBus);
                 if (!results.getErrors().isEmpty()){
                     return results;
                 }

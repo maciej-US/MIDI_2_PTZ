@@ -1,6 +1,8 @@
 package uci.midi2ptz.midi;
 
 import lombok.Getter;
+import lombok.SneakyThrows;
+import uci.midi2ptz.config.AppConfig;
 import uci.midi2ptz.core.MainControlCore;
 import uci.midi2ptz.core.ControlEvent;
 import uci.midi2ptz.core.ControlEventBus;
@@ -41,11 +43,12 @@ import static uci.midi2ptz.core.ControlEvent.EventSource.SYSTEM;
 public class MidiController implements ControlEventListener {
 
     private static final Logger LOGGER = Logger.getLogger(MidiController.class.getName());
-    private MidiInputController midiInputController;
-    private MidiOutputController midiOutputController;
+    private MidiInputEndpoint midiInputController;
+    private MidiOutputEndpoint midiOutputController;
     private final MidiConfig config;
     private final ControlEventBus outputBus;
     private final MainControlCore.RunMode mode;
+    private final AppConfig appConfig;
 
     private volatile boolean running = false;
     /**
@@ -88,24 +91,24 @@ public class MidiController implements ControlEventListener {
     /**
      * Creates a MIDI controller instance.
      *
-     * @param config MIDI controller configuration
-     * @param inputDeviceIndex MIDI input device index
-     * @param outputDeviceIndex MIDI output device index
+     * @param midiConfig MIDI controller configuration
      * @param outputBus event bus used for publishing control events
      * @param mode application runtime mode
      * @param controllerManager MIDI controller manager
      */
-    public MidiController(MidiConfig config, int inputDeviceIndex, int outputDeviceIndex, ControlEventBus outputBus,
+    @SneakyThrows
+    public MidiController(AppConfig appConfig, MidiConfig midiConfig, ControlEventBus outputBus,
                           MainControlCore.RunMode mode, MidiControllerManager controllerManager) {
 
         this.mode = mode;
-        this.config = config;
+        this.config = midiConfig;
         this.outputBus = outputBus;
         this.controllerManager = controllerManager;
         this.camLedAssignment = MainControlCore.ControlPanelId.A;
+        this.appConfig = appConfig;
 
         //Reverse binding index
-        for (Map.Entry<String, MidiBindingDefinition> entry : config.getBindings().entrySet()) {
+        for (Map.Entry<String, MidiBindingDefinition> entry : midiConfig.getBindings().entrySet()) {
 
             MidiBindingDefinition binding = entry.getValue();
             outputBindings.put(binding.getPanel() + ":" + binding.getAction(), entry.getKey());
@@ -114,14 +117,18 @@ public class MidiController implements ControlEventListener {
         this.midiOutputController = null;
 
         try {
-            this.midiInputController = new MidiInputController(inputDeviceIndex, mode);
-            this.midiOutputController = new MidiOutputController(outputDeviceIndex, config.isHardwareBlinking(), mode);
+            this.midiInputController = MidiEndpointFactory.createInputEndpoint(appConfig);
+            this.midiOutputController = MidiEndpointFactory.createOutputEndpoint(appConfig);
+            midiInputController.start();
+            midiOutputController.start();
         }catch (Exception e){
             if(midiInputController != null){
                 midiInputController.close();
+                appConfig.getSystem().setRunMode(MainControlCore.RunMode.NO_HARDWARE);
             }
             if(midiOutputController != null){
                 midiOutputController.close();
+                appConfig.getSystem().setRunMode(MainControlCore.RunMode.NO_HARDWARE);
             }
         }
 
@@ -245,6 +252,7 @@ public class MidiController implements ControlEventListener {
      *
      * <p>The controller threads are terminated, device connections are closed and internal queues are cleared.</p>
      */
+    @SneakyThrows
     public synchronized void shutdown() {
 
         running = false;

@@ -100,6 +100,12 @@ public class Midi2PTZ {
                         ? MainControlCore.RunMode.FULL
                         : MainControlCore.RunMode.NO_HARDWARE;
 
+        configManager.getConfig().getSystem().setRunMode(mode);
+
+        System.out.println("MidiManger status: " + mode);
+
+        //MainControlCore.RunMode mode = configManager.getConfig().getSystem().getRunMode();
+
         MainControlCore core = new MainControlCore(
                 configManager,
                 cameraManager,

@@ -494,6 +494,10 @@ public class PTZCameraManager {
      */
     public void initialize(){
 
+        if (initialized){
+            return;
+        }
+
         initializeTransport(appConfigManager.getConfig());
 
         if (transportState != TransportState.ONLINE){
@@ -657,7 +661,8 @@ public class PTZCameraManager {
     /**
      * Stops all managed camera activity and shuts down transport resources.
      *
-     * <p>Each configured camera is first instructed to move to its configured park position before UDP resources are released.</p>
+     * <p>Each configured camera is first instructed to move to its configured park position, tally lamp off and disable autoFollow mode
+     * before UDP resources are released.</p>
      */
     public void shutdown(){
 
@@ -665,6 +670,8 @@ public class PTZCameraManager {
         for (PTZCamera camera : cameras.values()){
             try{
                 camera.parkCamera();
+                camera.tally(0);
+                camera.autoFollow(0);
             }catch (Exception e){
                 LOGGER.warning("Unable to stop camera: " + camera.getCameraId());
             }
