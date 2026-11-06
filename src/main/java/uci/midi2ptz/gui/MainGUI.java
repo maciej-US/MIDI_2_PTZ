@@ -37,7 +37,7 @@ public class MainGUI implements Runnable{
 
     // ==================== CORE INTERFACE ====================
 
-    private ControlEventBus outputBus;
+    private ControlEventBus eventBus;
     private PTZCameraManager cameraManager;
     @Getter @Setter
     private volatile boolean firstLaunch;
@@ -50,20 +50,28 @@ public class MainGUI implements Runnable{
 
     private final Map<MainControlCore.ControlPanelId, GUIPanel> panels = new EnumMap<>(MainControlCore.ControlPanelId.class);
 
-    public MainGUI(ControlEventBus outputBus, AppConfigManager configManager, MidiControllerManager midiManager, boolean firstLaunch) {
+    public MainGUI(ControlEventBus eventBus, AppConfigManager configManager, MidiControllerManager midiManager, boolean firstLaunch) {
         this.configManager = configManager;
-        this.outputBus = outputBus;
+        this.eventBus = eventBus;
         this.midiManager = midiManager;
         this.firstLaunch = firstLaunch;
+        eventBus.register(this::handleControlEvent);
+
     }
 
     //============= GUI API METHODS =====================
 
     public void handleControlEvent(ControlEvent event) {
 
+        //DEBUG
+        System.out.println("GUI RECEIVED EVENT -> " + event + " THREAD=" + Thread.currentThread().getName());
+
+
         GUIPanel panel = panels.get(event.getPanel());
 
         if (panel != null && event.getAction().equalsIgnoreCase("UPDATE_CAMERA_STATUS"))  {
+            //DEBUG
+            System.out.println("MAIN GUI  Status info EVENT: " + event);
             refreshStatusInfo(event.getPanel());
         }
 
@@ -207,7 +215,7 @@ public class MainGUI implements Runnable{
         GUIPanel panel =
                 new GUIPanel(
                         panelId,
-                        outputBus,
+                        eventBus,
                         this,
                         cameraManager,
                         midiManager,
@@ -321,7 +329,7 @@ public class MainGUI implements Runnable{
                 "CAMERA_SELECT_" + cameraPanel.name(),
                 1
         );
-        outputBus.publish(event);
+        eventBus.publish(event);
     }
 
     public void refreshStatusInfo() {

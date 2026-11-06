@@ -438,6 +438,8 @@ public class PTZCamera {
      * Mark the camera as offline.
      */
     public void markOffline(){
+        //DEBUG
+        System.out.println ("CAMERA " + this.cameraId + " SET OFFLINE");;
         this.online = false;
     }
 

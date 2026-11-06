@@ -304,8 +304,7 @@ public class ViscaPTZController {
             PendingPacket pending = cameraManager.sendPacket(camera, command);
 
             if (pending == null) {
-                camera.markOffline();
-                cameraManager.notifyCameraStatusChanged(camera, false);
+                cameraManager.communicationReport(camera.getCameraId(), false);
                 LOGGER.warning("No PendingPacket for camera " + camera.getCameraId());
                 return null;
             }
@@ -317,12 +316,11 @@ public class ViscaPTZController {
             return pending;
 
         } catch (InterruptedException e) {
-            camera.markOffline();
-            cameraManager.notifyCameraStatusChanged(camera, false);
+            cameraManager.communicationReport(camera.getCameraId(), false);
             Thread.currentThread().interrupt();
             LOGGER.log(Level.SEVERE, "Camera " + camera.getCameraId() + " communication error", e);
         } catch (Exception e){
-            cameraManager.notifyCameraStatusChanged(camera, false);
+            cameraManager.communicationReport(camera.getCameraId(), false);
             LOGGER.log(Level.SEVERE, "Camera " + camera.getCameraId() + " sending VISCA command error", e);
         }
 
@@ -343,11 +341,7 @@ public class ViscaPTZController {
 
             if (response == null){
                 LOGGER.log(Level.WARNING, "No PAN/TILT inquiry response received");
-                camera.markOffline();
-                //DEBUG
-                LOGGER.severe("CAMERA OFFLINE FROM: " + Thread.currentThread().getName());
-                new Exception("OFFLINE TRACE").printStackTrace();
-                cameraManager.notifyCameraStatusChanged(camera, false);
+                cameraManager.communicationReport(camera.getCameraId(), false);
                 return false;
             }
 
@@ -473,8 +467,7 @@ public class ViscaPTZController {
             LOGGER.warning("Invalid " + parameterName + " inquiry response." +
             "\nReceived response:" + ((response ==null) ? "null" : bytesToHex(response, response.length)));
             LOGGER.info("CAMERA " + camera.getCameraId() + " SET OFFLINE.");
-            camera.markOffline();
-            cameraManager.notifyCameraStatusChanged(camera, false);
+            cameraManager.communicationReport(camera.getCameraId(), false);
             return false;
         }
 
@@ -745,10 +738,9 @@ public class ViscaPTZController {
     private void updateCameraStatus(PendingPacket pending) throws InterruptedException {
 
         if (pending.waitForResponse(RESPONSE_TIMEOUT)) {
-            camera.markOnline();
+            cameraManager.communicationReport(camera.getCameraId(), true);
         } else {
-            camera.markOffline();
-            cameraManager.notifyCameraStatusChanged(camera, false);
+            cameraManager.communicationReport(camera.getCameraId(), false);
             LOGGER.warning("Camera " + camera.getCameraId()+ " does not respond."
             );
         }

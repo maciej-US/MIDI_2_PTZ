@@ -35,6 +35,9 @@ public class ControlEventBus {
 
     public void publish (ControlEvent event) {
         for (ControlEventListener listener : listeners){
+            //DEBUG
+            //System.out.println("EVENT -> " + event.getAction() + " THREAD=" + Thread.currentThread().getName());
+
             listener.onControlEvent(event);
         }
     }

@@ -1004,7 +1004,6 @@ public class GUIPanel extends JPanel implements ControlEventListener {
             case "CAM_SELECT_3_INDICATOR":
             case "CAM_SELECT_4_INDICATOR":
             case "PANEL_SELECT_INDICATOR":
-
                 break;
 
             default:
@@ -1155,6 +1154,9 @@ public class GUIPanel extends JPanel implements ControlEventListener {
      * <p>This includes connection state, camera description and reconnect controls.</p>
      */
     public void refreshStatusInfo() {
+
+        //DEBUG
+        System.out.println("GUI PANEL Status info EVENT:" );
 
         boolean online = cameraManager.isCameraOnline(panelId);
 

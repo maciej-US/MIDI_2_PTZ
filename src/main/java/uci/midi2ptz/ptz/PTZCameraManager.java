@@ -1,6 +1,7 @@
 package uci.midi2ptz.ptz;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.Data;
 import lombok.Getter;
 import lombok.Setter;
 import uci.midi2ptz.config.AppConfig;
@@ -9,7 +10,6 @@ import uci.midi2ptz.config.ConfigurationUpdateResults;
 import uci.midi2ptz.core.MainControlCore.*;
 import uci.midi2ptz.core.ControlEvent;
 import uci.midi2ptz.core.ControlEventBus;
-import uci.midi2ptz.core.ControlEventListener;
 import uci.midi2ptz.visca.ViscaConfig;
 import uci.midi2ptz.visca.ViscaPTZController;
 
@@ -82,6 +82,9 @@ public class PTZCameraManager {
     private int localPort;
     private boolean running = true;
     private boolean initialized;
+    private final Map <String, CommunicationState> communicationStates = new ConcurrentHashMap<>();
+    private static final int OFFLINE_THRESHOLD = 3;
+
 
     //STATUS
     private static final Logger LOGGER = Logger.getLogger(PTZCameraManager.class.getName());
@@ -395,6 +398,45 @@ public class PTZCameraManager {
 
     }
 
+
+    public void communicationReport(String cameraId, boolean success) {
+
+        PTZCamera camera = cameras.get(cameraId);
+
+        if (camera == null) {
+            return;
+        }
+
+        CommunicationState state = communicationStates.computeIfAbsent(
+                        cameraId,
+                        id -> new CommunicationState());
+
+        if (success) {
+            state.setConsecutiveErrors(0);
+            state.lastSuccesfullCommunication = System.currentTimeMillis();
+            if (!camera.isOnline()) {
+                LOGGER.info("Camera " + cameraId + " communication restored.");
+                communicationReport(camera.getCameraId(), true);
+            }
+            return;
+        }
+
+        int errors = state.getConsecutiveErrors() + 1;
+        state.setConsecutiveErrors(errors);
+        state.lastErrorTimestamp = System.currentTimeMillis();
+        LOGGER.warning("Camera " + cameraId + " communication error " + errors  + "/" + OFFLINE_THRESHOLD);
+
+        if (errors < OFFLINE_THRESHOLD) {
+            return;
+        }
+
+        if (camera.isOnline()) {
+            LOGGER.warning( "Camera " + cameraId + " marked OFFLINE.");
+            camera.markOffline();
+            notifyCameraStatusChanged(camera,false);
+        }
+    }
+
     /**
      * Publishes a camera status update event.
      *
@@ -416,7 +458,10 @@ public class PTZCameraManager {
                         online ? 1 : 0
                 );
 
-        this.inputBus.publish(event);
+        //DEBUG
+        System.out.println("CAMERA STATUS NOTIFICATION EVENT: " + event);
+
+        inputBus.publish(event);
     }
 
     /**
@@ -448,8 +493,7 @@ public class PTZCameraManager {
             switch (powerStatus) {
                 case -1:
                     LOGGER.warning("Camera " + camera.getCameraId() + " does not respond.");
-                    camera.markOffline();
-                    notifyCameraStatusChanged(camera,false);
+                    communicationReport(camera.getCameraId(), false);
                     return false;
 
                 case 0:
@@ -458,30 +502,25 @@ public class PTZCameraManager {
                     Thread.sleep(1000);
                     powerStatus = camera.powerStatusRequest();
                     if (powerStatus == 1) {
-                        camera.markOnline();
-                        notifyCameraStatusChanged(camera,true);
+                        communicationReport(camera.getCameraId(), true);
                         return true;
                     }
 
-                    camera.markOffline();
-                    notifyCameraStatusChanged(camera,false);
+                    communicationReport(camera.getCameraId(), false);
                     return false;
 
                 case 1:
-                    camera.markOnline();
-                    notifyCameraStatusChanged(camera,true);
+                    communicationReport(camera.getCameraId(), true);
                     return true;
 
                 default:
                     LOGGER.warning("Unknown power status for camera " + camera.getCameraId() + ": " + powerStatus);
-                    camera.markOffline();
-                    notifyCameraStatusChanged(camera,false);
+                    communicationReport(camera.getCameraId(), false);
                     return false;
             }
 
         } catch (Exception e) {
-            camera.markOffline();
-            notifyCameraStatusChanged(camera,false);
+            communicationReport(camera.getCameraId(), false);
             LOGGER.warning("Refresh connection failed for " + camera.getCameraId());
             return false;
         }
@@ -681,6 +720,13 @@ public class PTZCameraManager {
         if (receiverThread != null) {
             receiverThread.interrupt();
         }
+    }
+
+    @Data
+    public class CommunicationState{
+        private int consecutiveErrors;
+        private long lastSuccesfullCommunication;
+        private long lastErrorTimestamp;
     }
 
 }
