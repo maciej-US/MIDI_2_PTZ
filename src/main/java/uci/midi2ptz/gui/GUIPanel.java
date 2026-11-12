@@ -15,18 +15,11 @@ import static uci.midi2ptz.core.ControlEvent.EventSource.SYSTEM;
 import static uci.midi2ptz.gui.ButtonLED.*;
 
 /**
- * Main PTZ camera control panel.
- *
- * <p>This component implements a complete camera control surface  including PTZ movement, zoom, focus, exposure and white balance controls.</p>
- *
- * <p>The panel acts as both:</p> *
- * <ul>
- *     <li>a source of user-generated {@link ControlEvent}s,</li>
- *     <li>a listener for system state updates received through the control event infrastructure.</li>
- * </ul>
- *
- * <p>User interactions are translated into {@link ControlEvent} instances and published through the {@link ControlEventBus}.
- * Incoming system events are used to synchronize GUI state with the current camera status.</p>
+ * Graphical representation of a logical camera control panel.
+ * <p>The panel provides user interaction controls and visual  feedback synchronized with the application runtime through
+ * the {@link ControlEventBus}.</p>
+ * <p>The class contains no PTZ control logic. All actions are translated into {@link ControlEvent}s and processed by
+ * {@link MainControlCore}.</p>
  *
  * <h2>Controlled Functions</h2> *
  * <ul>
@@ -42,26 +35,28 @@ import static uci.midi2ptz.gui.ButtonLED.*;
  *
  * <h2>Event Flow</h2> *
  * <pre>
- * User Action
- *      |
- *      v
- * GUIPanel
- *      |
- *      v
- * ControlEventBus
- *      |
- *      v
- * ControlCore
+
+ *        User action
+ *            |
+ *            v
+ *         GUIPanel
+ *            |
+ *            v
+ * ControlEventBus (GUI event)
+ *            |
+ *            v
+ *     Main Control Core
  *
- * ------------------------
+ * ----------------------------
  *
- * Camera State Change
- *      |
- *      v
- * ControlCore
- *      |
- *      v
- * GUIPanel
+ *     Main Control Core
+ *            |
+ *            v
+ * ControlEventBus (SYSTEM event)
+ *            |
+ *    +--------------------+
+ *    v                    v
+ * GUIPanel            MIDI/USB
  * </pre>
  */
 
@@ -116,8 +111,13 @@ public class GUIPanel extends JPanel implements ControlEventListener {
     private final ControlEventBus eventBus;
     private final PTZCameraManager cameraManager;
     private final MidiControllerManager midiManager;
+
+    /** Logical control panel identifier.*/
     MainControlCore.ControlPanelId panelId;
+
+    /** Indicates that the panel completed initialization and may process incoming events.*/
     private volatile boolean initialized = false;
+
     private final AppConfigManager appConfigManager;
     private final MainGUI parentGUI;
 
@@ -160,6 +160,7 @@ public class GUIPanel extends JPanel implements ControlEventListener {
      * Creates and configures all visual controls, event handlers and panel layout elements.
      *
      * <p>This method performs complete panel initialization and should only be called during construction.</p>
+     * <p>The method also registers event handlers, configures control mappings and performs initial synchronization with runtime state.</p>
      */
     private void initialize() {
 
@@ -894,7 +895,7 @@ public class GUIPanel extends JPanel implements ControlEventListener {
     }
 
     /**
-     * Receives system-generated control events.
+     *  Receives SYSTEM events published by {@link MainControlCore}.
      *
      * <p>Only events assigned to this panel are processed.</p>
      *
@@ -912,6 +913,10 @@ public class GUIPanel extends JPanel implements ControlEventListener {
         SwingUtilities.invokeLater(() -> updateFromEvent(event));
     }
 
+    /**
+     * Updates GUI controls and indicators in response to a SYSTEM event.     *
+     * <p>The method performs visual state synchronization only and does not generate new control events.</p>
+     */
     public void updateFromEvent(ControlEvent event) {
 
         if (!initialized) {
@@ -1144,6 +1149,9 @@ public class GUIPanel extends JPanel implements ControlEventListener {
     }
 
     //=== MIDI INDICATOR update
+    /**
+     * Returns the display used to present the currently assigned physical MIDI panel.
+     */
     public Dseg14Display getMidiPanelInfo(){
         return this.midiPanelInfo;
     }
@@ -1154,9 +1162,6 @@ public class GUIPanel extends JPanel implements ControlEventListener {
      * <p>This includes connection state, camera description and reconnect controls.</p>
      */
     public void refreshStatusInfo() {
-
-        //DEBUG
-        System.out.println("GUI PANEL Status info EVENT:" );
 
         boolean online = cameraManager.isCameraOnline(panelId);
 
@@ -1189,7 +1194,7 @@ public class GUIPanel extends JPanel implements ControlEventListener {
     }
 
     /**
-     * Requests reconnection of the camera assigned to this control panel.
+     * Requests camera reconnection through {@link PTZCameraManager}.
      */
     public void reconnectCamera() {
 
@@ -1201,6 +1206,10 @@ public class GUIPanel extends JPanel implements ControlEventListener {
         cameraManager.refreshConnection(panelId);
     }
 
+    /**
+     * Enables or disables all operator controls.
+     * <p>Used when the assigned camera goes offline or returns online.</p>
+     */
     private void setPanelEnabled(boolean enabled) {
 
         PTZModeButton.setEnabled(enabled);
@@ -1245,10 +1254,9 @@ public class GUIPanel extends JPanel implements ControlEventListener {
     }
 
     /**
-     * Requests an immediate state refresh from the control subsystem.
-     *
-     * <p>A STATUS_REQUEST event is published to the control event bus.</p>
+     * Requests runtime state synchronization after camera reconnection.
      */
+
     private void requestStateRefresh() {
 
         eventBus.publish(
@@ -1262,9 +1270,8 @@ public class GUIPanel extends JPanel implements ControlEventListener {
     }
 
     /**
-     * Synchronizes GUI indicators with the current cached camera state.
-     *
-     * <p>This method is typically executed after panel initialization.</p>
+     * Synchronizes local GUI state with cached camera parameters.
+     * <p>Used after panel initialization before live runtime events become available.</p>
      */
     private void synchronizeIndicators(){
 
@@ -1283,5 +1290,11 @@ public class GUIPanel extends JPanel implements ControlEventListener {
         focusKnob.setActive(focusManual);
     }
 
+    /**
+     * Removes panel from {@link ControlEventBus) listeners list
+     */
 
+    public void dispose(){
+        eventBus.unregister(this);
+    }
 }

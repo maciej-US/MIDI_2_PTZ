@@ -1,11 +1,6 @@
 package uci.midi2ptz.midi;
 
-import uci.midi2ptz.core.MainControlCore;
-
 import javax.sound.midi.*;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-
 import static uci.midi2ptz.core.MainControlCore.LOGGER;
 
 /**
@@ -17,11 +12,17 @@ import static uci.midi2ptz.core.MainControlCore.LOGGER;
  * to the selected MIDI output device.</p>
  *
  * <p>Blinking logic and output state management are inherited from {@link AbstractMidiOutputEndpoint}.</p>
+ * <p>This implementation is intended for devices exposed through the Java Sound MIDI subsystem and is independent of the USB_DIRECT transport.</p>
  */
 public class JavaMidiOutputEndpoint extends AbstractMidiOutputEndpoint {
 
+    /** Java MIDI receiver used for message transmission.*/
     private Receiver receiver;
+
+    /** Opened Java MIDI output device.*/
     private MidiDevice device;
+
+    /** Java MIDI device index.*/
     private final int deviceIndex;
 
     /**
@@ -30,9 +31,8 @@ public class JavaMidiOutputEndpoint extends AbstractMidiOutputEndpoint {
      * <p>The physical MIDI device is not opened during construction.  Device initialization is performed by {@link #start()}.</p>
      *
      * @param deviceIndex index of the Java MIDI output device
-     * @param hardwareBlinking indicates whether the controller supports native blinking     *
-     */
-    public JavaMidiOutputEndpoint(int deviceIndex, boolean hardwareBlinking) throws Exception {
+     * @param hardwareBlinking indicates whether the controller supports native blinking*/
+    public JavaMidiOutputEndpoint(int deviceIndex, boolean hardwareBlinking) {
 
         super(hardwareBlinking);
         this.deviceIndex = deviceIndex;
@@ -40,10 +40,7 @@ public class JavaMidiOutputEndpoint extends AbstractMidiOutputEndpoint {
 
     /**
      * Opens the selected MIDI output device and prepares it for message transmission.
-     *
-     * <p>The underlying Java MIDI receiver is obtained from the selected {@link MidiDevice}. When software blinking is enabled, the inherited
-     * blink engine is started.</p>
-     *
+     * <p>The underlying Java MIDI receiver is obtained from the selected {@link MidiDevice}.
      * @throws Exception if the MIDI device cannot be opened
      */
     @Override
@@ -53,11 +50,11 @@ public class JavaMidiOutputEndpoint extends AbstractMidiOutputEndpoint {
         this.device.open();
         receiver = device.getReceiver();
 
-        System.out.println("MIDI OUT ready: " + devices[deviceIndex].getName());
+        LOGGER.fine("MIDI OUT ready: " + devices[deviceIndex].getName());
     }
 
     /**
-     * Sends a MIDI Control Change message through the Java MIDI subsystem.
+     * Sends a MIDI Control Change message.
      *
      * @param cc MIDI controller number
      * @param value MIDI controller value
@@ -85,7 +82,7 @@ public class JavaMidiOutputEndpoint extends AbstractMidiOutputEndpoint {
     }
 
     /**
-     * Sends a MIDI Note On or Note Off message through the Java MIDI subsystem.
+     * Sends a MIDI Note On or Note Off message.
      *
      * @param channel MIDI channel
      * @param note MIDI note number
@@ -124,16 +121,9 @@ public class JavaMidiOutputEndpoint extends AbstractMidiOutputEndpoint {
         }
     }
 
-    @Override
-    public boolean supportsHardwareBlinking() {
-        return false;
-    }
-
     /**
-     * Releases all Java MIDI resources associated with this endpoint.
-     *
-     * <p>The underlying MIDI receiver is closed and the physical MIDI device
-     * is disconnected from the Java MIDI subsystem.</p>
+     * Releases all resources associated with this endpoint, including the software blinking engine and Java MIDI resources.
+     * <p>The underlying MIDI receiver is closed and the physical MIDI device is disconnected from the Java MIDI subsystem.</p>
      */
     @Override
     public void close() {
@@ -147,7 +137,7 @@ public class JavaMidiOutputEndpoint extends AbstractMidiOutputEndpoint {
 
         if (device != null && device.isOpen()) {
             device.close();
-            System.out.println("MIDI OUT stopped.");
+            LOGGER.fine("MIDI OUT Closed");
         }
     }
 

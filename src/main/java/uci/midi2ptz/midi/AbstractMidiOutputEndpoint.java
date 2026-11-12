@@ -5,18 +5,35 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import static uci.midi2ptz.core.MainControlCore.LOGGER;
 
+/**
+ * Base implementation of a MIDI output endpoint.
+ *
+ * <p>The class provides common functionality shared by all MIDI output transports, including software-emulated LED
+ * blinking for devices that do not support hardware blinking.</p>
+ *
+ * <p>Concrete implementations are responsible for delivering  MIDI messages to the underlying transport and must implement
+ * {@link #sendCC(int, int)} and  {@link #sendNote(int, int, int)}.</p>
+ */
+
 public abstract class AbstractMidiOutputEndpoint implements  MidiOutputEndpoint {
 
+    /** Indicates whether the target controller supports native LED blinking.*/
     private final boolean hardwareBlinking;
 
+    /** Background worker responsible for software blinking emulation.*/
     private Thread blinkThread;
 
     private final Map<Integer, Integer>
             blinkingOutputs =
             new ConcurrentHashMap<>();
 
+    /** Current phase of the software blink cycle.*/
     private boolean blinkState;
 
+    /**
+     * Creates a MIDI output endpoint.
+     * @param hardwareBlinking true when blinking is performed natively by the controller
+     */
     protected AbstractMidiOutputEndpoint(boolean hardwareBlinking) {
 
         this.hardwareBlinking = hardwareBlinking;
@@ -66,7 +83,8 @@ public abstract class AbstractMidiOutputEndpoint implements  MidiOutputEndpoint 
         blinkThread.start();
     }
 
-     void stopBlinkEngine() {
+    /** Stops the software blinking engine and clears all registered blinking outputs.*/
+    protected void stopBlinkEngine() {
 
         if (blinkThread != null) {
             blinkThread.interrupt();
@@ -99,28 +117,21 @@ public abstract class AbstractMidiOutputEndpoint implements  MidiOutputEndpoint 
         blinkingOutputs.remove(cc);
     }
 
+    /** Dispatches a generic MIDI event to the appropriate low-level transport method.     *
+     * @param event event to transmit */
     @Override
-    public void send(
-            MidiEvent event) {
+    public void send(MidiEvent event) {
 
         if (event == null) {
             return;
         }
 
         switch (event.type()) {
-
             case CC ->
-                    sendCC(
-                            event.number(),
-                            event.value()
-                    );
+                    sendCC(event.number(), event.value());
 
             case NOTE ->
-                    sendNote(
-                            event.channel(),
-                            event.number(),
-                            event.value()
-                    );
+                    sendNote(event.channel(), event.number(), event.value());
         }
     }
 
@@ -140,20 +151,24 @@ public abstract class AbstractMidiOutputEndpoint implements  MidiOutputEndpoint 
     }
 
 
+    /**Returns whether the underlying controller supports native LED blinking.
+     * @return true if blinking is implemented by hardware*/
     @Override
     public boolean supportsHardwareBlinking() {
         return hardwareBlinking;
     }
 
-    protected abstract void sendCC(
-            int cc,
-            int value
-    );
+    /**Sends a Control Change message.
+     *
+     * @param cc controller number
+     * @param value controller value*/
+    protected abstract void sendCC(int cc, int value);
 
-    protected abstract void sendNote(
-            int channel,
-            int note,
-            int value
-    );
+    /**Sends a Note message.
+     *
+     * @param channel MIDI channel
+     * @param note note number
+     * @param value velocity/value*/
+    protected abstract void sendNote(int channel, int note, int value);
 
 }

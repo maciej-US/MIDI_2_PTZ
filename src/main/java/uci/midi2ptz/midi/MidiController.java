@@ -22,7 +22,9 @@ import static uci.midi2ptz.core.ControlEvent.EventSource.SYSTEM;
 /**
  * Central MIDI controller integration layer.
  *
- * <p>This class coordinates communication between physical MIDI hardware and the application control subsystem.</p>
+ * <p>This class coordinates communication between physical MIDI hardware and the application control subsystem.
+ * The controller operates on logical application panels and relies on {@link MidiControllerManager} to resolve
+ * runtime MIDI-to-core panel mappings.</p>
  *
  * <p>It translates incoming MIDI messages into  {@link ControlEvent} instances and converts application events
  * into hardware feedback such as LEDs, indicators and controller state updates.</p> *
@@ -50,28 +52,36 @@ public class MidiController implements ControlEventListener {
     private final MainControlCore.RunMode mode;
     private final AppConfig appConfig;
 
+    /**Indicates whether MIDI processing services are currently active.*/
     private volatile boolean running = false;
-    /**
-     * Controls temporary event-capture mode used while requesting controller state information.
-     */
+
+    /** Controls temporary event-capture mode used while requesting controller state information.*/
     private volatile boolean captureMode = false;
 
-    /**
-     * Remembers the currently selected camera assignment panel used for camera-selection LEDs.
-     */
+    /** Remembers the currently selected camera assignment panel used for camera-selection LEDs.*/
     private MainControlCore.ControlPanelId camLedAssignment;
+
+    /** Main MIDI input processing worker.*/
     private Thread controllerThread;
+
+    /**Generates automatic jog stop events when movement updates stop arriving.*/
     private Thread jogWatchdogThread;
 
     private final BlockingQueue<ControlEvent> controlQueue = new LinkedBlockingQueue<>();
+
+    /** Temporary queue used for controller status-request capture mode.*/
     private final BlockingQueue<MidiEvent> statusQueue = new LinkedBlockingQueue<>();
+
+    /** Last pending values used by the event debouncing subsystem.*/
     private final Map<String, Integer> pendingCCValues = new ConcurrentHashMap<>();
+
+    /** Scheduled debounce tasks indexed by logical action name.*/
     private final Map<String, ScheduledFuture<?>> pendingTasks = new ConcurrentHashMap<>();
+
+    /** Executor used for event debounce scheduling.*/
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
 
-    /**
-     * Reverse lookup table used for translating ControlEvents into MIDI control identifiers.
-     */
+    /** Reverse lookup table used for translating ControlEvents into MIDI control identifiers.*/
     private final Map<String, String> outputBindings = new HashMap<>();
 
     //Jog params
@@ -89,7 +99,11 @@ public class MidiController implements ControlEventListener {
     private final MidiControllerManager controllerManager;
 
     /**
-     * Creates a MIDI controller instance.
+     * Creates and initializes a MIDI controller.
+     *
+     * <p>The constructor loads MIDI endpoint implementations, creates binding lookup tables and registers the controller as a
+     * listener of the application event bus.</p>
+     * <p>In FULL mode background processing threads are started automatically.</p>
      *
      * @param midiConfig MIDI controller configuration
      * @param outputBus event bus used for publishing control events
@@ -142,7 +156,8 @@ public class MidiController implements ControlEventListener {
     /**
      * Starts MIDI processing services.
      *
-     * <p>The method initializes background worker threads responsible for handling incoming MIDI events and jog wheel timeout monitoring.</p>
+     * <p>The method initializes background worker threads responsible for handling incoming MIDI events and jog wheel timeout monitoring.
+     * Jog wheel controls are detected and prepared during startup.</p>
      *
      * <p>After startup, incoming hardware events are translated into {@link ControlEvent} instances and forwarded to the application event bus.</p>
      */
@@ -250,7 +265,8 @@ public class MidiController implements ControlEventListener {
     /**
      * Stops MIDI processing and releases all hardware resources.
      *
-     * <p>The controller threads are terminated, device connections are closed and internal queues are cleared.</p>
+     * <p>The controller threads are terminated, device connections are closed and internal queues are cleared.
+     * Pending debounce operations are canceled and internal queues are discarded.</p>
      */
     @SneakyThrows
     public synchronized void shutdown() {
@@ -478,36 +494,55 @@ public class MidiController implements ControlEventListener {
             return;
         }
 
-        if ("STATUS_REQUEST".equals(event.getAction())) {
-            captureMode = true;
-            midiInputController.getEventQueue().clear();
-            statusQueue.clear();
-            try {
-                ControlEvent response = handleStatusRequest(event);
-                if (response != null) {
-                    outputBus.publish(response);
-                }
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            } finally {
-                statusQueue.clear();
-                captureMode = false;
-            }
-            return;
+        ControlEvent resolvedEvent = event;
+        MainControlCore.ControlPanelId midiPanel = controllerManager.getMidiBinding(event.getPanel());
+
+        if (midiPanel != null) {
+            resolvedEvent = new ControlEvent(
+                    event.getEventSource(),
+                    midiPanel,
+                    event.getAction(),
+                    event.getValue()
+            );
         }
 
-        for (Map.Entry<String, MidiBindingDefinition> entry : config.getBindings().entrySet()) {
+        switch (event.getAction()){
+            case "STATUS_REQUEST":
+                captureMode = true;
+                midiInputController.getEventQueue().clear();
+                statusQueue.clear();
+                try {
+                    ControlEvent response = handleStatusRequest(resolvedEvent);
+                    if (response != null) {
+                        outputBus.publish(response);
+                    }
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                } finally {
+                    statusQueue.clear();
+                    captureMode = false;
+                }
+                return;
 
-            if (!entry.getValue().getAction().equals(event.getAction())) {
-                continue;
-            }
+            case "CLEAR_PENDING_EVENTS":
+                clearPendingEvents();
+                clearPanel(resolvedEvent.getPanel());
+                return;
 
-            MidiControlDefinition control = config.getControls().get(entry.getKey());
+            default:
+                for (Map.Entry<String, MidiBindingDefinition> entry : config.getBindings().entrySet()) {
 
-            if (control == null) {
-                continue;
-            }
-            translateOutput(control, event);
+                    if (!entry.getValue().getAction().equals(resolvedEvent.getAction())) {
+                        continue;
+                    }
+
+                    MidiControlDefinition control = config.getControls().get(entry.getKey());
+
+                    if (control == null) {
+                        continue;
+                    }
+                    translateOutput(control, resolvedEvent);
+                }
         }
     }
 
@@ -536,6 +571,12 @@ public class MidiController implements ControlEventListener {
                 );
 
         pendingTasks.put(key, newTask);
+    }
+
+    /** Clears all pending MIDI events and captured status messages.*/
+    public void clearPendingEvents(){
+        controlQueue.clear();
+        statusQueue.clear();
     }
 
     /**
@@ -588,7 +629,8 @@ public class MidiController implements ControlEventListener {
     /**
      * Performs a MIDI controller status query.
      *
-     * <p>The method temporarily enters capture mode and waits for the response generated by the controller hardware.</p>
+     * <p>The method temporarily enters capture mode and waits for the response generated by the controller hardware.
+     * The request-response exchange is performed synchronously and blocks until a matching controller response arrives or a timeout expires. </p>
      *
      * @param request status request event
      * @return status response event or {@code null}
@@ -711,7 +753,7 @@ public class MidiController implements ControlEventListener {
     }
 
     /**
-     * Updates camera selection indicators for the specified MIDI panel.
+     * Updates camera-selection LEDs for the specified MIDI panel according to the current MIDI-to-core panel mapping.
      *
      * @param selectedPanel panel whose indicators should be updated
      */

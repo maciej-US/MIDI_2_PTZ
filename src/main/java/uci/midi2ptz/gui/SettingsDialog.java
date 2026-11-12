@@ -7,6 +7,7 @@ import uci.midi2ptz.config.AppConfig;
 import uci.midi2ptz.config.AppConfigManager;
 import uci.midi2ptz.config.ConfigurationUpdateResults;
 import uci.midi2ptz.core.MainControlCore;
+import uci.midi2ptz.midi.MidiControllerManager;
 import uci.midi2ptz.ptz.PTZCamera;
 import uci.midi2ptz.ptz.PTZCameraManager;
 import uci.midi2ptz.midi.MidiDeviceInfo;
@@ -30,13 +31,34 @@ import java.util.Map;
 
 import static uci.midi2ptz.core.MainControlCore.LOGGER;
 
-//Data management
+/**
+ * Application configuration editor dialog.
+ *
+ * <p>Provides configuration of:</p>
+ *
+ * <ul>
+ *     <li>PTZ cameras,</li>
+ *     <li>MIDI controller transport,</li>
+ *     <li>network transport settings.</li>
+ * </ul>
+ *
+ * <p>The dialog edits an isolated configuration model and delegates validation and runtime reconfiguration to {@link AppConfigManager}.</p>
+ */
 public class SettingsDialog extends JDialog {
 
     //MIDI page
+    private JRadioButton generalMidiRadio;
+    private JRadioButton usbDirectRadio;
     private JComboBox<MidiDeviceInfo> inputComboBox;
     private JComboBox<MidiDeviceInfo> outputComboBox;
     private JTextField midiMappingFileField;
+    private JComboBox<MidiControllerManager.UsbMidiDeviceInfo>usbDeviceComboBox;
+    private JLabel usbInterfaceDisplayInfo;
+
+    //* Hidden transport metadata used when building USB_DIRECT configuration.
+    private JLabel usbVidValue;
+    private JLabel usbPidValue;
+    private JLabel usbInterfaceValue;
 
 
     //CAMERA page
@@ -82,7 +104,7 @@ public class SettingsDialog extends JDialog {
 
     private JPanel createGeneralPanel() {
 
-        JPanel generalPanel = new JPanel();
+        JPanel generalPanel =new JPanel(new BorderLayout());
 
         JPanel transportPanel = new JPanel(new GridBagLayout());
         GridBagConstraints transportGbc = new GridBagConstraints();
@@ -160,6 +182,10 @@ public class SettingsDialog extends JDialog {
         return generalPanel;
     }
 
+    /**
+     * Creates MIDI transport configuration page.
+     * <p>Supports both GENERAL_MIDI and USB_DIRECT transport backends.</p>
+     */
     private JPanel createMidiPanel(AppConfig config) {
 
         JPanel panel = new JPanel( new GridBagLayout());
@@ -170,10 +196,22 @@ public class SettingsDialog extends JDialog {
 
         AppConfig.MidiConfig midi = config.getSystem().getMidi();
 
+        generalMidiRadio = new JRadioButton("General MIDI");
+        usbDirectRadio = new JRadioButton("USB Direct");
+        ButtonGroup transportGroup = new ButtonGroup();
+        transportGroup.add(generalMidiRadio);
+        transportGroup.add(usbDirectRadio);
+
+        if (midi.getMidiTransport() == AppConfig.MidiTransport.USB_DIRECT) {
+            usbDirectRadio.setSelected(true);
+        } else {
+            generalMidiRadio.setSelected(true);
+        }
+
         //--- MIDI INPUT
         DefaultComboBoxModel<MidiDeviceInfo> inputModel = new DefaultComboBoxModel<>();
         inputModel.addElement(null);
-        for (MidiDeviceInfo device : AppConfigManager.getMidiInputs()) {
+        for (MidiDeviceInfo device : MidiControllerManager.getMidiInputs()) {
             if (device.rxTransmitters() >= 0) {
                 inputModel.addElement(device);
             }
@@ -194,7 +232,7 @@ public class SettingsDialog extends JDialog {
         //--- MIDI OUTPUT
         DefaultComboBoxModel<MidiDeviceInfo> outputModel = new DefaultComboBoxModel<>();
         outputModel.addElement(null);
-        for (MidiDeviceInfo device : AppConfigManager.getMidiOutputs()) {
+        for (MidiDeviceInfo device : MidiControllerManager.getMidiOutputs()) {
             if (device.txReceivers() >= 0) {
                 outputModel.addElement(device);
             }
@@ -210,6 +248,77 @@ public class SettingsDialog extends JDialog {
                 }
             }
         }
+
+        //USB-DIRECT
+        DefaultComboBoxModel<MidiControllerManager.UsbMidiDeviceInfo> usbModel = new DefaultComboBoxModel<>();
+
+        for (MidiControllerManager.UsbMidiDeviceInfo device : MidiControllerManager.getUsbMidiDevices()) {
+            usbModel.addElement(device);
+        }
+
+        usbDeviceComboBox = new JComboBox<>(usbModel);
+
+        for (int i = 0; i < usbDeviceComboBox.getItemCount(); i++) {
+            MidiControllerManager.UsbMidiDeviceInfo device = usbDeviceComboBox.getItemAt(i);
+
+            if (device.vid() == midi.getUsbDirect().getVid() && device.pid() == midi.getUsbDirect().getPid()) {
+                usbDeviceComboBox.setSelectedIndex(i);
+                break;
+            }
+        }
+
+        usbVidValue = new JLabel();
+        usbPidValue = new JLabel();
+        usbInterfaceValue = new JLabel();
+        usbInterfaceDisplayInfo = new JLabel();
+
+        Runnable updateUsbInfo = () -> {
+            MidiControllerManager.UsbMidiDeviceInfo device = (MidiControllerManager.UsbMidiDeviceInfo)usbDeviceComboBox.getSelectedItem();
+
+            if (device == null) {
+                usbVidValue.setText("");
+                usbPidValue.setText("");
+                usbInterfaceValue.setText("");
+
+                usbInterfaceDisplayInfo.setText("VID: -\nPID: -\nInterface: -");
+                return;
+            }
+
+
+            usbVidValue.setText(String.valueOf(device.vid()));
+            usbPidValue.setText(String.valueOf(device.pid()));
+            usbInterfaceValue.setText(String.valueOf(device.interfaceNumber()));
+
+            usbInterfaceDisplayInfo.setText(
+                    String.format(
+                            "<html>"
+                                    + "VID: 0x%04X<br>"
+                                    + "PID: 0x%04X<br>"
+                                    + "Interface: %d"
+                                    + "</html>",
+                            device.vid(),
+                            device.pid(),
+                            device.interfaceNumber()
+                    )
+            );
+        };
+
+        usbDeviceComboBox.addActionListener(e -> updateUsbInfo.run());
+        updateUsbInfo.run();
+
+        Runnable updateTransportControls = () -> {
+            boolean generalMidi = generalMidiRadio.isSelected();
+            inputComboBox.setEnabled(generalMidi);
+            outputComboBox.setEnabled(generalMidi);
+            usbDeviceComboBox.setEnabled(!generalMidi);
+        };
+        generalMidiRadio.addActionListener(e -> updateTransportControls.run());
+        usbDirectRadio.addActionListener(e -> updateTransportControls.run());
+        updateTransportControls.run();
+
+
+
+        //Mapping file
 
         midiMappingFileField = new JTextField(midi.getController().getConfigFile());
 
@@ -247,9 +356,20 @@ public class SettingsDialog extends JDialog {
         });
 
         //======== LAYOUT COMPOSITION
-        //--- Input device
+
         midiGBC.gridx = 0;
         midiGBC.gridy = 0;
+        panel.add(new JLabel("Tryb kontrolera sprzętowego:"), midiGBC);
+
+        midiGBC.gridx = 1;
+        panel.add(generalMidiRadio, midiGBC);
+        midiGBC.gridx = 2;
+        panel.add(usbDirectRadio, midiGBC);
+
+
+        //--- MIDI Input device
+        midiGBC.gridx = 0;
+        midiGBC.gridy = 1;
         panel.add(new JLabel("Urządzenie wejściowe MIDI: "), midiGBC);
 
         midiGBC.gridx = 1;
@@ -257,9 +377,9 @@ public class SettingsDialog extends JDialog {
         midiGBC.fill = GridBagConstraints.HORIZONTAL;
         panel.add(inputComboBox, midiGBC);
 
-        //--- Input device
+        //--- MIDI OUTPUT device
         midiGBC.gridx = 0;
-        midiGBC.gridy = 1;
+        midiGBC.gridy = 2;
         panel.add(new JLabel("Urządzenie wyjściowe MIDI:"), midiGBC);
 
         midiGBC.gridx = 1;
@@ -267,10 +387,25 @@ public class SettingsDialog extends JDialog {
         midiGBC.fill = GridBagConstraints.HORIZONTAL;
         panel.add(outputComboBox, midiGBC);
 
-        //---- Mapping file
-        //--- Input device
+
+        //USB_DIRECT device
         midiGBC.gridx = 0;
-        midiGBC.gridy = 2;
+        midiGBC.gridy = 3;
+        panel.add( new JLabel("Urządzenie USB:"), midiGBC);
+
+        midiGBC.gridx = 1;
+        midiGBC.gridwidth = 2;
+        panel.add(usbDeviceComboBox, midiGBC);
+        midiGBC.gridwidth = 1;
+
+        midiGBC.gridx = 1;
+        midiGBC.gridy = 4;
+        panel.add(usbInterfaceDisplayInfo,midiGBC);
+
+
+        //---- Mapping file
+        midiGBC.gridx = 0;
+        midiGBC.gridy = 5;
         panel.add(new JLabel("KOnfiguracja mapowania MIDI:"), midiGBC);
 
         midiGBC.gridx = 1;
@@ -286,6 +421,10 @@ public class SettingsDialog extends JDialog {
         return panel;
     }
 
+    /**
+     * Creates MIDI transport configuration page.
+     * <p>Supports both GENERAL_MIDI and USB_DIRECT transport backends.</p>
+     */
     private JPanel createCameraPanel(AppConfig config) {
 
         JPanel container = new JPanel();
@@ -604,6 +743,10 @@ public class SettingsDialog extends JDialog {
     //   BUTTONS HANDLERS
     //==============================
 
+    /**
+     * Builds a complete configuration model from current dialog values.     *
+     * <p>The returned configuration is not validated and has not yet been applied.</p>
+     */
     private AppConfig buildConfiguration(){
 
         ObjectMapper mapper = new ObjectMapper();
@@ -643,6 +786,8 @@ public class SettingsDialog extends JDialog {
 
         midi.getController().setConfigFile(midiMappingFileField.getText().trim());
 
+        midi.setMidiTransport(generalMidiRadio.isSelected()? AppConfig.MidiTransport.GENERAL_MIDI : AppConfig.MidiTransport.USB_DIRECT);
+
         switch (midi.getMidiTransport()) {
             case GENERAL_MIDI:
                 MidiDeviceInfo input = (MidiDeviceInfo) inputComboBox.getSelectedItem();
@@ -650,6 +795,7 @@ public class SettingsDialog extends JDialog {
                 if (input != null) {
                     midi.getController().setDeviceName(input.deviceName());
                     midi.getJavaMidi().setInputDeviceIndex(input.deviceIndex());
+                    midi.getJavaMidi().setInputDeviceName(input.deviceName());
 
                 } else {
                     midi.getJavaMidi().setInputDeviceIndex(-1);
@@ -659,6 +805,7 @@ public class SettingsDialog extends JDialog {
 
                 if (output != null) {
                     midi.getJavaMidi().setOutputDeviceIndex(output.deviceIndex());
+                    midi.getJavaMidi().setInputDeviceName(output.deviceName());
                 } else {
                     midi.getJavaMidi().setOutputDeviceIndex(-1);
                 }
@@ -666,13 +813,12 @@ public class SettingsDialog extends JDialog {
 
             case USB_DIRECT:
 
-                /*midi.getUsbDirect().setVid(Integer.parseInt(usbVidField.getText().trim()));
-                midi.getUsbDirect().setPid(Integer.parseInt(usbPidField.getText().trim()));
+                midi.getUsbDirect().setVid(Integer.parseInt(usbVidValue.getText().trim()));
+                midi.getUsbDirect().setPid(Integer.parseInt(usbPidValue.getText().trim()));
 
-                midi.getUsbDirect().setInterfaceNumber(Integer.parseInt(usbInterfaceField.getText().trim()));
-                midi.getUsbDirect().setInputEndpoint(Integer.parseInt(usbInputEndpointField.getText().trim()));
-
-                midi.getUsbDirect().setOutputEndpoint(Integer.parseInt(usbOutputEndpointField.getText().trim()));*/
+                midi.getUsbDirect().setInterfaceNumber(Integer.parseInt(usbInterfaceValue.getText().trim()));
+                midi.getUsbDirect().setInputEndpoint(129);
+                midi.getUsbDirect().setOutputEndpoint(1);
                 break;
         }
 
@@ -680,6 +826,9 @@ public class SettingsDialog extends JDialog {
 
     }
 
+    /**
+     * Validates and applies configuration changes entered by the user.
+     */
     private void updateConfiguration() {
 
         if (!validateConfigurationForm()){
@@ -706,6 +855,10 @@ public class SettingsDialog extends JDialog {
         //gui.reloadConfiguration();
     }
 
+    /**
+     * Performs client-side validation of configuration form fields.
+     * <p>This validation complements runtime validation performed by {@link AppConfigManager}.</p>
+     */
     private boolean validateConfigurationForm() {
 
         boolean valid = true;
@@ -777,6 +930,9 @@ public class SettingsDialog extends JDialog {
     //       HELPERS, RENDERS
     //===============================
 
+    /**
+     * Refreshes displayed camera connection states using the current runtime camera registry.
+     */
     private void refreshCameraStatuses() {
 
         for (MainControlCore.ControlPanelId panelId : cameraPanels.keySet()) {
@@ -859,7 +1015,5 @@ public class SettingsDialog extends JDialog {
         JTextField localIpField;
         JTextField localPortField;
     }
-
-
 
 }

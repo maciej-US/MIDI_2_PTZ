@@ -5,6 +5,7 @@ import uci.midi2ptz.config.ConfigurationUpdateResults;
 import uci.midi2ptz.core.MainControlCore;
 import uci.midi2ptz.core.ControlEventBus;
 import uci.midi2ptz.gui.MainGUI;
+import uci.midi2ptz.gui.SplashScreen;
 import uci.midi2ptz.midi.MidiControllerManager;
 import uci.midi2ptz.ptz.PTZCameraManager;
 
@@ -17,9 +18,12 @@ import java.nio.file.Paths;
 
 public class Midi2PTZ {
 
+    private static SplashScreen splashScreen;
+
      static void main(String[] args)throws Exception {
 
-        //TODO: Splash SCREEN
+         splashScreen = new SplashScreen();
+         SplashScreen.show();
 
         // ======= GENRAL CONFIG =============
 
@@ -72,6 +76,7 @@ public class Midi2PTZ {
          if (!firsLaunch) {
              try {
                  startRuntime(gui, configManager, cameraManager, midiManager, eventBus);
+                 splashScreen.hide();
              }catch (Exception e){
                  e.printStackTrace();
              }
@@ -124,7 +129,9 @@ public class Midi2PTZ {
             Thread.sleep(50);
         }
 
+
         configManager.setGui(gui);
+        splashScreen.hide();
 
         //results = cameraManager.reconfigureCameras();
 
@@ -132,6 +139,7 @@ public class Midi2PTZ {
 
         gui.rebuildPanels();
         gui.refreshStatusInfo();
+
 
         return results;
     }

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import lombok.Getter;
 import lombok.Setter;
+import org.usb4java.*;
 import uci.midi2ptz.core.MainControlCore;
 import uci.midi2ptz.core.ControlEventBus;
 import uci.midi2ptz.core.ControlPanel;
@@ -18,16 +19,14 @@ import java.net.DatagramSocket;
 import java.nio.file.Files;
 import java.util.*;
 
-
-import static javax.sound.midi.MidiSystem.getMidiDeviceInfo;
-import static uci.midi2ptz.Midi2PTZ.startRuntime;
 import static uci.midi2ptz.core.MainControlCore.LOGGER;
 
 /**
  * Central configuration management service for the MIDI2PTZ application.
  *
- * <p>This class is responsible for loading, validating, storing and applying application configuration changes at runtime.</p> *
- * <p>The manager coordinates configuration updates across multiple subsystems, including:</p> *
+ * <p>This class is responsible for loading, validating, storing and applying application configuration changes at runtime.
+ * The manager owns the active application configuration and coordinates validation and reconfiguration of runtime subsystems.</p>
+ * <p>The manager coordinates configuration updates across multiple subsystems, including:</p>
  * <ul>
  *     <li>MIDI device configuration and mapping validation,</li>
  *     <li>VISCA/PTZ camera configuration and connectivity checks,</li>
@@ -35,8 +34,7 @@ import static uci.midi2ptz.core.MainControlCore.LOGGER;
  *     <li>GUI refresh and runtime synchronization.</li>
  * </ul>
  *
- * <p>Configuration changes are applied using a staged validation process to ensure that invalid settings cannot be committed to the running system.</p> *
- * <p>The class also provides utility methods for MIDI device discovery and default configuration generation.</p>
+ * <p>Configuration changes are applied using a staged validation process to ensure that invalid settings cannot be committed to the running system.</p>
  *
  *<h2 Validation Workflow</h2>
  *
@@ -46,7 +44,7 @@ import static uci.midi2ptz.core.MainControlCore.LOGGER;
  *  JSON Deserialization
  *          |
  *          v
- *    MIDI Validation
+ *  MIDI/USB Validation
  *          |
  *          v
  * Transport Validation
@@ -57,36 +55,37 @@ import static uci.midi2ptz.core.MainControlCore.LOGGER;
  *          v
  * Runtime Reconfiguration </pre>
  *
+ * <p>MIDI/USB validation includes validation of the selected transport backend and controller definition file.</p> *
  * <p>Any validation failure immediately aborts the update process and returns the corresponding error details.</h>
  */
 public class AppConfigManager {
 
     /**
-     * Configuration subsystems that may report validation or runtime errors.
+     * Logical configuration subsystems identifiers participating in validation and runtime reconfiguration.     *
      * <p>Used by {@link ConfigurationUpdateResults} to associate validation  and configuration errors with a specific application component.</p>
      */
     public enum ConfigurationSection {
-            CONFIG_MANAGER,
-            TRANSPORT,
-            MIDI,
-            CAMERA,
-            GUI,
-            JSON_OPERATIONS
+            CONFIG_MANAGER,     /** Configuration manager subsystem */
+            TRANSPORT,          /** Network transport subsystem */
+            MIDI,               /** MIDI device support subsystem */
+            CAMERA,             /** PTZ camera managing subsystem */
+            GUI,                /** User Interface subsystem */
+            JSON_OPERATIONS     /** JSON serialization and deserialization operations */
     }
 
     /**
-     * Defines the configuration update strategy.
-     *
-     * <p>Different update modes determine the amount of validation performed
-     * and whether changes should be applied to the running application.</p>
-     */
+    * Configuration update modes.
+    */
     public enum UpdateMode {
         VALIDATE_ONLY,          /** Validate configuration without applying any changes.*/
-        COMMIT,                 /** Validate configuration and commit changes to the running system. */
+        COMMIT,                 /** Validate configuration and applying changes to the running application. */
         INITIAL_LOAD,           /** Initial application startup using an existing configuration file.*/
         FIRST_LAUNCH            /** First application launch using a newly generated configuration.*/
     }
 
+    /**
+     * Currently active application configuration.
+     */
     @Getter
     private AppConfig config;
 
@@ -103,6 +102,9 @@ public class AppConfigManager {
     private static final ObjectMapper MAPPER = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
     private final File configFile;
 
+    /**
+     * Indicates that no valid configuration file existed and a default configuration was generated.
+     */
     @Getter @Setter
     private boolean firstLaunch = true;
 
@@ -311,10 +313,10 @@ public class AppConfigManager {
     }
 
     /**
-     * Creates a new default application configuration.     *
-     * <p>The generated configuration contains empty user settings, presets and default subsystem configuration objects.</p>
+     * Creates a minimal valid configuration model.
      *
-     * @return initialized default configuration instance
+     * <p>The configuration contains initialized subsystem structures but does not create any MIDI or camera definitions.</p>
+     * @return newly created configuration instance
      */
     public AppConfig createDefaultConfig() {
 
@@ -326,11 +328,8 @@ public class AppConfigManager {
     }
 
     /**
-     * Updates MIDI panel assignment for a specific control panel.
-     * <p>The corresponding camera configuration is updated and the configuration is marked as modified.</p>
-     *
-     * @param targetCorePanel target control panel
-     * @param midiPanel MIDI panel assigned to the control panel
+     * Updates MIDI-to-core panel assignment.     *
+     * <p>The mapping is stored in the camera definition and persisted with the main configuration.</p>
      */
     public void updateMidiBinding(ControlPanel targetCorePanel, MainControlCore.ControlPanelId midiPanel){
 
@@ -350,15 +349,21 @@ public class AppConfigManager {
     }
 
     /**
-     * Validates and applies a new configuration.     *
-     * <p>The update process consists of multiple validation stages:</p>     *
+     * /**
+     *  Validates and optionally applies a candidate configuration.
+     * <p>The method performs staged validation of transport, MIDI, controller mapping, VISCA definitions and camera connectivity before any
+     *  runtime reconfiguration is attempted.</p>
+     *
+     *  <p>Depending on {@link UpdateMode}, validation may be performed without affecting the running system.</p>
+     *
+     * <p>The update process consists of multiple validation stages:</p>
      * <ol>
      *     <li>change detection,</li>
      *     <li>MIDI configuration validation,</li>
      *     <li>network transport validation,</li>
      *     <li>camera and VISCA validation,</li>
      *     <li>runtime subsystem reconfiguration.</li>
-     * </ol>     *
+     * </ol>
      * <p>Depending on the selected update mode, validation may be performed without modifying the running application.</p>
      *
      * @param newConfig candidate configuration
@@ -524,7 +529,6 @@ public class AppConfigManager {
         if (updateMode == UpdateMode.INITIAL_LOAD) {
             try {
                 cameraManager.initializeTransport(this.config);
-                //results = startRuntime(gui, this, cameraManager, midiManager, eventBus);
                 if (!results.getErrors().isEmpty()){
                     return results;
                 }
@@ -558,9 +562,9 @@ public class AppConfigManager {
     }
 
     /**
-     * Refreshes application subsystems after a configuration change.
+     * Synchronizes runtime subsystems after a  successful configuration update.
      *
-     * <p>This includes GUI updates, control panel reconstruction and runtime interface synchronization.</p>
+     * <p>Reloads GUI configuration, rebuilds control panels and synchronizes controller state with active PTZ devices.</p>
      */
     public void refreshAfterReconfiguration() {
 
@@ -576,11 +580,11 @@ public class AppConfigManager {
     }
 
     /**
-     * Performs a basic structural *alidation of a configuration object.
-     * <p>The method verifies tha* all required top-level configuration sections are present.</p>
+     * Performs a basic structural validation of a configuration object.
+     * <p>The method verifies that all required top-level configuration sections are present.</p>
      *
      * @param config configuration to validate
-     * @return {@code true} if the required structure is present,otherwise {@code false}
+     * @return {@code true} if the required structure is present, otherwise {@code false}
      */
     private boolean isConfigurationStructureValid(AppConfig config){
 
@@ -603,59 +607,6 @@ public class AppConfigManager {
         return config.getSystem().getCameras() != null;
     }
 
-    /**
-     * Retrieves all MIDI devices*available in the current system.
-     * <p>Both input and output capable devices are returned.</p>
-     *
-     * return list of detected MIDI devices
-     */
-    public static List<MidiDeviceInfo> getMidiDevices() {
 
-        List<MidiDeviceInfo> result = new ArrayList<>();
-
-        MidiDevice.Info[] infos = getMidiDeviceInfo();
-
-        for (int i = 0; i < infos.length; i++) {
-
-            try {
-                MidiDevice device = MidiSystem.getMidiDevice(infos[i]);
-
-                result.add(new MidiDeviceInfo(infos[i].getName(), i, device.getMaxTransmitters(), device.getMaxReceivers()));
-
-            } catch (MidiUnavailableException e) {
-                LOGGER.warning("MIDI device error: " + e.getMessage());
-            }
-        }
-
-        return result;
-    }
-
-    /**
-     * Retrieves all MIDI devices capable of transmitting MIDI messages to the application.
-     *
-     * @return avail*ble MIDI input devices
-     */
-    public static List<MidiDeviceInfo> getMidiInputs() {
-
-        return getMidiDevices()
-                .stream()
-                .filter(d ->
-                        d.rxTransmitters() >= 0)
-                .toList();
-    }
-
-    /**
-     * Retrieves all MIDI devices capable of receiving MID* messages from the application.
-     *
-     * @return available MIDI output devices
-     */
-    public static List<MidiDeviceInfo> getMidiOutputs() {
-
-        return getMidiDevices()
-                .stream()
-                .filter(d ->
-                        d.txReceivers() >= 0)
-                .toList();
-    }
 
 }

@@ -20,7 +20,16 @@ import java.io.File;
 import java.util.EnumMap;
 import java.util.Map;
 
-
+/**
+ * Main application window.
+ *
+ * <p>Responsible for creation and management of all GUI panels, menus and configuration dialogs.</p>
+ *
+ * <p>The class acts as the top-level coordinator of the Swing user interface and synchronizes visual state with runtime events
+ * published through {@link ControlEventBus}.</p>
+ *
+ * <p>Application control logic is implemented by {@link MainControlCore}. MainGUI is responsible only for presentation and user interaction.</p>
+ */
 public class MainGUI implements Runnable{
 
 
@@ -37,13 +46,20 @@ public class MainGUI implements Runnable{
 
     // ==================== CORE INTERFACE ====================
 
-    private ControlEventBus eventBus;
+    private final ControlEventBus eventBus;
     private PTZCameraManager cameraManager;
+    /**
+     * Indicates that application configuration has not been completed yet.
+     */
     @Getter @Setter
     private volatile boolean firstLaunch;
-    private AppConfigManager configManager;
-    private MidiControllerManager midiManager;
+    private final AppConfigManager configManager;
+    private final MidiControllerManager midiManager;
 
+    /**
+     * Indicates that the main window has been fully initialized and displayed.
+     */
+    @Getter
     private volatile boolean initialized = false;
     @Getter
     private boolean shuttingDown = false;
@@ -61,17 +77,20 @@ public class MainGUI implements Runnable{
 
     //============= GUI API METHODS =====================
 
+    /**
+     * MainGUI receives global GUI events (status refresh, configuration updates).
+     * Panel-specific events are handled directly by individual GUIPanel instances.
+     */
+
     public void handleControlEvent(ControlEvent event) {
 
-        //DEBUG
-        System.out.println("GUI RECEIVED EVENT -> " + event + " THREAD=" + Thread.currentThread().getName());
-
+        if (event.getEventSource() != ControlEvent.EventSource.SYSTEM){
+            return;
+        }
 
         GUIPanel panel = panels.get(event.getPanel());
 
         if (panel != null && event.getAction().equalsIgnoreCase("UPDATE_CAMERA_STATUS"))  {
-            //DEBUG
-            System.out.println("MAIN GUI  Status info EVENT: " + event);
             refreshStatusInfo(event.getPanel());
         }
 
@@ -125,9 +144,7 @@ public class MainGUI implements Runnable{
 
         JMenuItem exitItem = new JMenuItem(      "Zamknij");
         exitItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_F4, InputEvent.ALT_DOWN_MASK));
-        exitItem.addActionListener(e -> {
-            shutdown();
-        });
+        exitItem.addActionListener(e -> shutdown());
 
         fileMenu.add(loadConfigItem);
         fileMenu.add(saveConfigItem);
@@ -144,9 +161,7 @@ public class MainGUI implements Runnable{
 
             JMenu cameraMenu = new JMenu("Kamera " + panelId.name());
             JMenuItem reconnectItem = new JMenuItem("Odśwież");
-            reconnectItem.addActionListener(e -> {
-                reconnectCamera(panelId);
-            });
+            reconnectItem.addActionListener(e -> reconnectCamera(panelId));
             JMenuItem assignMidiA = new JMenuItem("==> MIDI Panel A");
             assignMidiA.addActionListener(e -> assignMidiPanel(
                             panelId,
@@ -186,7 +201,7 @@ public class MainGUI implements Runnable{
 
         //frame.setSize(2 * this.panelA.getWidth() + 24, panelA.getHeight() + 15);
         frame.pack();
-        frame.setLocationRelativeTo(null);
+        frame.setLocation(100, 100);
 
         frame.setVisible(true);
 
@@ -210,6 +225,9 @@ public class MainGUI implements Runnable{
 
     }
 
+    /**
+     * Creates and registers a GUI representation of the specified logical control panel.
+     */
     private GUIPanel createPanel(ControlPanelId panelId) {
 
         GUIPanel panel =
@@ -227,10 +245,18 @@ public class MainGUI implements Runnable{
         return panel;
     }
 
+
+    /**
+     * Rebuilds all visible camera control panels.
+     * <p>The method recreates the panel layout based on currently assigned cameras.</p>
+     */
     public void rebuildPanels() {
 
         contentPanel.removeAll();
 
+        for (GUIPanel panel : panels.values()){
+            panel.dispose();
+        }
         panels.clear();
 
         boolean first = true;
@@ -259,6 +285,11 @@ public class MainGUI implements Runnable{
         refreshStatusInfo();
     }
 
+    /**
+     * Performs an orderly application shutdown.
+     *
+     * <p>Pending configuration changes are validated and may be saved before runtime services are stopped.</p>
+     */
     public void shutdown(){
 
         if (configManager.getConfig().isChanged()){
@@ -299,7 +330,9 @@ public class MainGUI implements Runnable{
         System.exit(0);
     }
 
-    //===  MIDI PANELS STATUS UPDATES
+    /**
+     * Updates displayed MIDI-to-core panel assignments.
+     */
     public void refreshPanelBindings() {
 
         for (GUIPanel panel : panels.values()) {
@@ -346,6 +379,11 @@ public class MainGUI implements Runnable{
         }
     }
 
+    /**
+     * Reloads GUI state after successful configuration update.
+     *
+     * <p>Panels are rebuilt and MIDI panel assignments are refreshed.</p>
+     */
     public void reloadConfiguration() {
 
         rebuildPanels();
@@ -448,20 +486,6 @@ public class MainGUI implements Runnable{
 
     public void setCameraManager(PTZCameraManager cameraManager) {
         this.cameraManager = cameraManager;
-    }
-
-    public boolean isInitialized() {
-
-        return this.initialized;
-    }
-
-    private void actionPerformed(ActionEvent e) {
-        new SettingsDialog(
-                frame,
-                configManager,
-                cameraManager,
-                this
-        ).setVisible(true);
     }
 
     public String formatErrors(

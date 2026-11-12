@@ -8,12 +8,14 @@ import uci.midi2ptz.config.ConfigurationUpdateResults;
 import uci.midi2ptz.core.MainControlCore;
 import uci.midi2ptz.core.ControlEventBus;
 
+import javax.sound.midi.MidiDevice;
+import javax.sound.midi.MidiSystem;
+import javax.sound.midi.MidiUnavailableException;
 import java.io.File;
-import java.util.EnumMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
+import java.nio.ByteBuffer;
+import java.util.*;
 
+import static javax.sound.midi.MidiSystem.getMidiDeviceInfo;
 import static uci.midi2ptz.Midi2PTZ.isMidiDeviceAvailable;
 import static uci.midi2ptz.core.MainControlCore.LOGGER;
 
@@ -21,7 +23,7 @@ import static uci.midi2ptz.core.MainControlCore.LOGGER;
  * Central MIDI subsystem manager.
  *
  * <p>This class is responsible for creating, validating, configuring and managing the lifecycle of the active
- * {@link MidiController} instance.</p>
+ * {@link MidiController} instance. The manager supports both the Java MIDI transport and low-levelUSB MIDI transport implementations.</p><
  *
  * <p>In addition to controller lifecycle management, it maintains the routing layer between physical MIDI panels and logical
  * application control panels.</p>
@@ -154,7 +156,6 @@ public class MidiControllerManager {
                         && midi.getUsbDirect().getInterfaceNumber() >= 0
                         && midi.getUsbDirect().getInputEndpoint() != 0
                         && midi.getUsbDirect().getOutputEndpoint() != 0;
-                default -> false;
             };
         }
 
@@ -177,19 +178,14 @@ public class MidiControllerManager {
             return false;
         }
 
-        switch (midi.getMidiTransport()) {
-
-            case GENERAL_MIDI:
+        return switch (midi.getMidiTransport()) {
+            case GENERAL_MIDI -> {
                 String deviceName = midi.getController().getDeviceName();
-                return deviceName != null && isMidiDeviceAvailable(deviceName);
-
-            case USB_DIRECT:
-                return isUsbDeviceAvailable((short) midi.getUsbDirect().getVid(), (short) midi.getUsbDirect().getPid());
-
-            default:
-
-                return false;
-        }
+                yield deviceName != null && isMidiDeviceAvailable(deviceName);
+            }
+            case USB_DIRECT ->
+                    isUsbDeviceAvailable((short) midi.getUsbDirect().getVid(), (short) midi.getUsbDirect().getPid());
+        };
     }
 
     /**
@@ -198,11 +194,7 @@ public class MidiControllerManager {
      * @return {@code true} if the controller is running
      */
     public boolean isMidiControllerRunning(){
-        if (this.controller != null) {
-            return this.controller.isRunning();
-        }else{
-            return false;
-        }
+        return controller != null && controller.isRunning();
     }
 
     /**
@@ -217,7 +209,8 @@ public class MidiControllerManager {
     /**
      * Creates and starts a MIDI controller using the current application configuration.
      *
-     * <p>The method loads the external MIDI mapping file, initializes controller routing and establishes panel assignments.</p>
+     * <p>The method loads the external MIDI mapping file, initializes controller routing and establishes panel assignments.
+     * Panel assignments are restored from the current application configuration before controller startup.</p>
      */
     private void startController() {
 
@@ -253,7 +246,7 @@ public class MidiControllerManager {
             }
 
             controller.start();
-            System.out.println("[MIDI] Started: " + midiConfig.getControllerName());
+            LOGGER.fine("[MIDI] Started: " + midiConfig.getControllerName());
 
         } catch (Exception e) {
             controller = null;
@@ -269,7 +262,7 @@ public class MidiControllerManager {
         if (controller != null) {
             controller.shutdown();
             controller = null;
-            System.out.println("[MIDI] Stopped.");
+            LOGGER.fine("[MIDI] Stopped.");
         }
     }
 
@@ -280,17 +273,13 @@ public class MidiControllerManager {
      */
     public void updateMidiIndicators() {
 
-        Set<MainControlCore.ControlPanelId> activeMidiPanels = new HashSet<>();
-
         for (MainControlCore.ControlPanelId corePanel : MainControlCore.ControlPanelId.values()) {
             MainControlCore.ControlPanelId midiPanel = getMidiBinding(corePanel);
 
             if (midiPanel != null) {
-                activeMidiPanels.add(midiPanel);
                 controller.updateCameraIndicators(midiPanel);
             }
         }
-
     }
 
     /**
@@ -355,7 +344,7 @@ public class MidiControllerManager {
     /**
      * Validates a MIDI configuration without starting the application runtime.
      *
-     * <p>A temporary controller instance is created and immediately shut down after initialization succeeds.</p>
+     * <p> A temporary controller instance is constructed to verify configuration consistency.</p>
      *
      * <p>The method is primarily used by configuration validation workflows.</p>
      *
@@ -411,5 +400,226 @@ public class MidiControllerManager {
             LibUsb.exit(context);
         }
         return false;
+    }
+
+    /**
+     * Retrieves all MIDI devices*available in the current system.
+     * <p>Both input and output capable devices are returned.</p>
+     *
+     * return list of detected MIDI devices
+     */
+
+    public static List<MidiDeviceInfo> getMidiDevices() {
+
+        List<MidiDeviceInfo> result = new ArrayList<>();
+
+        MidiDevice.Info[] infos = getMidiDeviceInfo();
+
+        for (int i = 0; i < infos.length; i++) {
+
+            try {
+                MidiDevice device = MidiSystem.getMidiDevice(infos[i]);
+
+                result.add(new MidiDeviceInfo(infos[i].getName(), i, device.getMaxTransmitters(), device.getMaxReceivers()));
+
+            } catch (MidiUnavailableException e) {
+                LOGGER.warning("MIDI device error: " + e.getMessage());
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * Retrieves all MIDI devices capable of transmitting MIDI messages to the application.
+     *
+     * @return available MIDI input devices
+     */
+    public static List<MidiDeviceInfo> getMidiInputs() {
+
+        return getMidiDevices()
+                .stream()
+                .filter(d ->
+                        d.rxTransmitters() >= 0)
+                .toList();
+    }
+
+    /**
+     * Retrieves all MIDI devices capable of receiving MIDI messages from the application.
+     *
+     * @return available MIDI output devices
+     */
+    public static List<MidiDeviceInfo> getMidiOutputs() {
+
+        return getMidiDevices()
+                .stream()
+                .filter(d ->
+                        d.txReceivers() >= 0)
+                .toList();
+    }
+
+    /** Scans the USB bus for USB-MIDI devices.
+     *
+     * <p>Only interfaces implementing the USB Audio MIDI Streaming subclass are returned.</p>
+     * @return detected USB MIDI interfaces
+     */
+    public static List<UsbMidiDeviceInfo>getUsbMidiDevices() {
+
+        List<UsbMidiDeviceInfo> result = new ArrayList<>();
+
+        Context context = new Context();
+
+        try {
+            int rc = LibUsb.init(context);
+
+            if (rc != LibUsb.SUCCESS) {
+                return result;
+            }
+
+            DeviceList devices = new DeviceList();
+
+            LibUsb.getDeviceList(context, devices);
+
+            try {
+                for (Device device : devices) {
+
+                    DeviceDescriptor desc = new DeviceDescriptor();
+
+                    if (LibUsb.getDeviceDescriptor(device, desc) != LibUsb.SUCCESS) {
+                        continue;
+                    }
+
+                    UsbMidiDeviceInfo info = detectMidiInterface(device, desc);
+
+                    if (info != null) {
+                        result.add(info);
+                    }
+                }
+
+            } finally {
+                LibUsb.freeDeviceList(devices, true);
+            }
+
+        } finally {
+            LibUsb.exit(context);
+        }
+
+        return result;
+    }
+
+    /** Detects the first USB-MIDI interface exposed by the specified USB device.
+     *
+     * @param device USB device
+     * @param deviceDescriptor device descriptor
+     *
+     * @return MIDI interface description or null when no MIDI interface exists*/
+    private static UsbMidiDeviceInfo detectMidiInterface(Device device, DeviceDescriptor deviceDescriptor) {
+
+        ConfigDescriptor configDescriptor = new ConfigDescriptor();
+
+        int result = LibUsb.getActiveConfigDescriptor(device, configDescriptor);
+
+        if (result != LibUsb.SUCCESS) {
+            return null;
+        }
+
+        try {
+            Interface[] interfaces = configDescriptor.iface();
+
+            for (Interface usbInterface : interfaces) {
+                for (InterfaceDescriptor descriptor : usbInterface.altsetting()) {
+
+                    // USB Audio / MIDI Streaming
+                    if (descriptor.bInterfaceClass() != 0x01) {
+                        continue;
+                    }
+
+                    if (descriptor.bInterfaceSubClass() != 0x03) {
+                        continue;
+                    }
+
+                    int interfaceNumber = descriptor.bInterfaceNumber();
+
+                    int inputEndpoint = -1;
+                    int outputEndpoint = -1;
+
+                    for (EndpointDescriptor endpoint : descriptor.endpoint()) {
+                        int address =endpoint.bEndpointAddress() & 0xFF;
+                        if ((address & 0x80) != 0) {
+                            inputEndpoint = address;
+                        } else {
+                            outputEndpoint = address;
+                        }
+                    }
+
+                    if (inputEndpoint < 0 || outputEndpoint < 0) {
+                        continue;
+                    }
+
+                    String deviceName = String.format("%04X:%04X", deviceDescriptor.idVendor() & 0xFFFF, deviceDescriptor.idProduct()& 0xFFFF);
+
+                    try {
+                        DeviceHandle handle = new DeviceHandle();
+                        if (LibUsb.open(device, handle) == LibUsb.SUCCESS) {
+
+                            byte index = deviceDescriptor.iProduct();
+
+                            if (index > 0) {
+                                byte[] buffer = new byte[256];
+
+                                int len = LibUsb.getStringDescriptor(handle, index, (short) 0x0409, ByteBuffer.wrap(buffer));
+
+                                if (len > 2) {
+                                    deviceName = new String(buffer, 2, len - 2, java.nio.charset.StandardCharsets.UTF_16LE);
+                                }
+                            }
+
+                            LibUsb.close(handle);
+                        }
+
+                    } catch (Exception ignored) {
+                    }
+
+                    return new UsbMidiDeviceInfo(
+                            deviceName,
+                            deviceDescriptor.idVendor() & 0xFFFF,
+                            deviceDescriptor.idProduct() & 0xFFFF,
+                            interfaceNumber,
+                            inputEndpoint,
+                            outputEndpoint
+                    );
+                }
+            }
+
+        } finally {
+            LibUsb.freeConfigDescriptor(configDescriptor);
+        }
+
+        return null;
+    }
+
+    /**
+     * Description of a*discovered USB-MIDI interface.
+     *
+     * @param deviceName human-readable device name
+     * @param vid USB vendor identifier
+     * @param pid USB product identifier
+     * @param interfaceNumber MIDI interface number
+     * @param inputEndpoint USB IN endpoint
+     * @param outputEndpoint USB OUT endpoint
+     */
+    public record UsbMidiDeviceInfo(
+
+            String deviceName,
+            int vid,
+            int pid,
+            int interfaceNumber,
+            int inputEndpoint,
+            int outputEndpoint
+    ) {
+        @Override
+        public String toString(){
+            return deviceName;
+        }
     }
 }

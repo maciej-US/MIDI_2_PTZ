@@ -1,6 +1,5 @@
 package uci.midi2ptz.core;
 
-import uci.midi2ptz.config.AppConfig;
 import uci.midi2ptz.config.AppConfigManager;
 import uci.midi2ptz.gui.MainGUI;
 import uci.midi2ptz.midi.MidiController;
@@ -45,29 +44,29 @@ import static uci.midi2ptz.core.ControlEvent.EventSource.*;
  *     <li>Tally management</li>
  *     <li>Camera and panel assignment management</li>
  *     <li>State synchronization</li>
- *     <li>Event generation for GUI and MIDI feedback</li>
+ *     <li>Runtime state synchronization</li>
+ *     <li>Control state publication through the event bus</li>
  * </ul>
  *
  * <h2>Event Flow</h2>
  *
  * <pre>
- * MIDI Controller ----\
- *                      \
+ * MIDI Controller                   GUI Component
+ *       |                                |
+ *       +--------------------------------+
+ *                       |
  *                       v
- *                  Event Bus
+ *            Event Bus (GUI or MIDI events)
  *                       |
  *                       v
  *                 MainControlCore
  *                       |
- *          +------------+------------+
- *          |                         |
- *          v                         v
- *      PTZ Cameras            State Events
- *                                     |
- *                         +-----------+-----------+
- *                         |                       |
- *                         v                       v
- *                        GUI               MIDI Feedback
+ *                       v
+ *             Event Bus (SYSTEM events)
+ *                       |
+ *        +--------------+----------------+
+ *        v              v                v
+ *   MIDI Feedback    PTZ Cameras    GUI Component
  * </pre>
  *
  * <p>MainControlCore contains no direct GUI logic and no hardware-specific MIDI logic. All communication occurs
@@ -76,8 +75,7 @@ import static uci.midi2ptz.core.ControlEvent.EventSource.*;
 public class MainControlCore implements ControlEventListener{
 
     /**
-     * Defines all logical controls supported by the application.     *
-     * <p>Each control represents a camera function or application  feature that can be manipulated via MIDI hardware, GUI components or internal automation.</p>
+     * Logical control identifiers used by the control engine independently of transport, GUI or MIDI implementation.
      */
     public enum Control {
         TILT,
@@ -100,10 +98,8 @@ public class MainControlCore implements ControlEventListener{
     }
 
     /**
-     * Represents the runtime state of a control or control mode.
-     *
-     * <p>The interpretation of a particular state depends on the control type. For example, PTZ controls use {@code JOYSTICK} and {@code ABSOLUTE},
-     * while focus controls use {@code AUTO} and {@code MANUAL}.</p>
+     * Generic runtime states used by various  controls.
+     * <p>Not every value applies to every control type.</p>
      */
     public enum ModeState {
         JOYSTICK,
@@ -136,9 +132,9 @@ public class MainControlCore implements ControlEventListener{
      * Defines the application runtime mode.
      */
     public enum RunMode {
-        FULL,           /** Full operation with connected MIDI devices and cameras.*/
-        TEST,           /** Validation mode used for configuration testing.*/
-        NO_HARDWARE     /** Runtime mode without external hardware.*/
+        FULL,           /** Full operation with cameras and hardware controller enabled.*/
+        TEST,           /** Validation-only mode used during configuration validation.*/
+        NO_HARDWARE     /** Runtime mode without physical cameras or MIDI/USB hardware.*/
     }
 
     // SYSTEM STATE VARIABLES
@@ -157,6 +153,9 @@ public class MainControlCore implements ControlEventListener{
     private final ControlEventBus inputBus;
 
     // RUNTIME BEHAVIOUR
+    /**
+     * Indicates that the controller is waiting for a neutral control position before re-entering joystick mode.
+     */
     private boolean waitingForStateSync = false;
 
     //LOGGER
@@ -195,12 +194,8 @@ public class MainControlCore implements ControlEventListener{
     }
 
     /**
-     * Starts the control engine.
-     *
-     * <p>The method initializes connected subsystems, configures runtime camera states and starts the main event-processing thread.</p>
-     * <p>A dedicated worker thread continuously consumes events from the {@link ControlEventBus} and forwards them to the internal
-     * event dispatcher.</p>
-     * <p>All control processing performed by the core originates from this event loop.</p>
+     * Initializes runtime subsystems and default camera states.     *
+     * <p>No event-processing thread is created. Events are received  synchronously through the {@link ControlEventBus} listener interface.</p>
      */
     public void start() {
 
@@ -282,7 +277,7 @@ public class MainControlCore implements ControlEventListener{
 
         //ONLINE?OFFLINE STATUS UPDATE EVENT
         if (event.getAction().equalsIgnoreCase("UPDATE_CAMERA_STATUS")){
-            sendControlEvent(event);
+            inputBus.publish(event);
             return;
         }
 
@@ -438,7 +433,7 @@ public class MainControlCore implements ControlEventListener{
                         event.getAction(),
                         value);
 
-                sendControlEvent(eventJOY);
+                inputBus.publish(eventJOY);
                 return;
 
             case ABSOLUTE:
@@ -461,7 +456,7 @@ public class MainControlCore implements ControlEventListener{
                         event.getAction(),
                         value);
 
-                sendControlEvent(eventABS);
+                inputBus.publish(eventABS);
                 break;
         }
     }
@@ -512,7 +507,7 @@ public class MainControlCore implements ControlEventListener{
                 event.getAction(),
                 value);
 
-        sendControlEvent(returnEvent);
+        inputBus.publish(returnEvent);
     }
 
     //TODO: zaimplementować zoom w trybie joystick
@@ -550,7 +545,7 @@ public class MainControlCore implements ControlEventListener{
                         value
                 );
 
-        sendControlEvent(returnEvent);
+        inputBus.publish(returnEvent);
 
         //    gui.handleControlEvent(returnEvent);
     }
@@ -590,7 +585,7 @@ public class MainControlCore implements ControlEventListener{
                     2
             );
 
-            sendControlEvent(returnEvent);
+            inputBus.publish(returnEvent);
 
             returnEvent = new ControlEvent(
                     SYSTEM,
@@ -609,7 +604,7 @@ public class MainControlCore implements ControlEventListener{
                     0
             );
 
-            sendControlEvent(returnEvent);
+            inputBus.publish(returnEvent);
 
             returnEvent = new ControlEvent(
                     SYSTEM,
@@ -627,7 +622,7 @@ public class MainControlCore implements ControlEventListener{
         }
 
         if (event != null) {
-            sendControlEvent(returnEvent);
+            inputBus.publish(returnEvent);
         }
     }
 
@@ -780,7 +775,7 @@ public class MainControlCore implements ControlEventListener{
                 normalizedMidi
         );
 
-        sendControlEvent(returnEvent);
+        inputBus.publish(returnEvent);
     }
 
     /* ==============================================================================
@@ -812,7 +807,7 @@ public class MainControlCore implements ControlEventListener{
                         "STATUS_REQUEST",
                         0
                 );*/
-                //midiController.sendControlEvent(stateRequest);
+                //midiController.inputBus.publish(stateRequest);
                 enterWaitNeutral(panel, control);
                 break;
 
@@ -834,7 +829,7 @@ public class MainControlCore implements ControlEventListener{
             return;
         }
 
-        sendControlEvent(new ControlEvent(
+        inputBus.publish(new ControlEvent(
                 SYSTEM,
                 panel.getId(),
                 "ABSOLUTE_MODE_INDICATOR",
@@ -849,7 +844,7 @@ public class MainControlCore implements ControlEventListener{
         panel.setAcceptingPanTilt(false);
         //panel.setAcceptingZoom(false);
 
-        sendControlEvent (new ControlEvent(
+        inputBus.publish (new ControlEvent(
                 SYSTEM,
                 panel.getId(),
                 "ABSOLUTE_MODE_INDICATOR",
@@ -878,7 +873,7 @@ public class MainControlCore implements ControlEventListener{
 
             panel.setAcceptingPanTilt(true);
 
-            sendControlEvent(new ControlEvent(
+            inputBus.publish(new ControlEvent(
                     SYSTEM,
                     panel.getId(),
                     "ABSOLUTE_MODE_INDICATOR",
@@ -903,7 +898,7 @@ public class MainControlCore implements ControlEventListener{
         if (panel.getStates().get(TALLY) == ModeState.OFF) {
             camera.tally(1);
             tallyStatus = ModeState.ON;
-            sendControlEvent(new ControlEvent(SYSTEM,
+            inputBus.publish(new ControlEvent(SYSTEM,
                     panel.getId(),
                     "TALLY_INDICATOR",
                     1));
@@ -911,7 +906,7 @@ public class MainControlCore implements ControlEventListener{
         if (panel.getStates().get(TALLY) == ModeState.ON) {
             camera.tally(0);
             tallyStatus = ModeState.OFF;
-            sendControlEvent(new ControlEvent(SYSTEM,
+            inputBus.publish(new ControlEvent(SYSTEM,
                     panel.getId(),
                     "TALLY_INDICATOR",
                     0));
@@ -937,7 +932,7 @@ public class MainControlCore implements ControlEventListener{
         if (panel.getStates().get(AUTO_FOLLOW) == ModeState.OFF) {
             camera.autoFollow(1);
             autoFollowStatus = ModeState.ON;
-            sendControlEvent(new ControlEvent (
+            inputBus.publish(new ControlEvent (
                     SYSTEM,
                     panel.getId(),
                     "AUTO_FOLLOW_INDICATOR",
@@ -947,7 +942,7 @@ public class MainControlCore implements ControlEventListener{
         if (panel.getStates().get(AUTO_FOLLOW) == ModeState.ON) {
             camera.autoFollow(0);
             autoFollowStatus = ModeState.OFF;
-            sendControlEvent(new ControlEvent (
+            inputBus.publish(new ControlEvent (
                     SYSTEM,
                     panel.getId(),
                     "AUTO_FOLLOW_INDICATOR",
@@ -978,14 +973,14 @@ public class MainControlCore implements ControlEventListener{
                 camera.setExposureMode("AUTO");
                 //panel.getStates().put(EXPOSURE_IRIS, ModeState.LOCK);
                 //panel.getStates().put(EXPOSURE_IRIS, ModeState.LOCK);
-                /*midiController.sendControlEvent(new ControlEvent(
+                /*midiController.inputBus.publish(new ControlEvent(
                         SYSTEM,
                         panel.getId(),
                         "STATUS_REQUEST",
                         0
                 ));*/
 
-                sendControlEvent(new ControlEvent(
+                inputBus.publish(new ControlEvent(
                         SYSTEM,
                         panel.getId(),
                         "EXPOSURE_MODE_INDICATOR",
@@ -1001,7 +996,7 @@ public class MainControlCore implements ControlEventListener{
 
                 //---- gain clutching
                 //camera.getParameter("exposureGainPosition", true);
-               /* midiController.sendControlEvent(new ControlEvent(
+               /* midiController.inputBus.publish(new ControlEvent(
                         SYSTEM,
                         panel.getId(),
                         "STATUS_REQUEST",
@@ -1011,7 +1006,7 @@ public class MainControlCore implements ControlEventListener{
 
                 //-- iris clutching
                 //camera.getParameter("exposureIrisPosition", true);
-               /* midiController.sendControlEvent(new ControlEvent(
+               /* midiController.inputBus.publish(new ControlEvent(
                         SYSTEM,
                         panel.getId(),
                         "STATUS_REQUEST",
@@ -1021,7 +1016,7 @@ public class MainControlCore implements ControlEventListener{
 
                 //---- shutter clutching
                 //camera.getParameter("exposureIrisPosition", true);
-               /* midiController.sendControlEvent(new ControlEvent(
+               /* midiController.inputBus.publish(new ControlEvent(
                         SYSTEM,
                         panel.getId(),
                         "STATUS_REQUEST",
@@ -1030,7 +1025,7 @@ public class MainControlCore implements ControlEventListener{
                 //panel.getStates().put(EXPOSURE_SHUTTER, ModeState.LOCK);
 
                 //--- mode indicator event
-                sendControlEvent(new ControlEvent(
+                inputBus.publish(new ControlEvent(
                         SYSTEM,
                         panel.getId(),
                         "EXPOSURE_MODE_INDICATOR",
@@ -1042,7 +1037,7 @@ public class MainControlCore implements ControlEventListener{
                 /*params.put("exposureMode", "AUTO");
                 camera.executeViscaCommand("exposureMode", params);*/
                 camera.setExposureMode("AUTO");
-                sendControlEvent( new ControlEvent(
+                inputBus.publish( new ControlEvent(
                         SYSTEM,
                         panel.getId(),
                         "EXPOSURE_MODE_INDICATOR",
@@ -1051,7 +1046,7 @@ public class MainControlCore implements ControlEventListener{
 
         panel.getStates().put(EXPOSURE_MODE, nextMode);
 
-        //sendControlEvent(returnEvent);
+        //inputBus.publish(returnEvent);
     }
 
     private void handleWBMode(ControlEvent event) {
@@ -1113,7 +1108,7 @@ public class MainControlCore implements ControlEventListener{
         }
 
 
-        sendControlEvent(returnEvent);
+        inputBus.publish(returnEvent);
 
         params.put("whiteBalanceMode",targetModeName);
         camera.setWhiteBalanceMode(targetModeName);
@@ -1121,7 +1116,7 @@ public class MainControlCore implements ControlEventListener{
         camera.getParameter("whiteBalanceMode").setCurrent(targetMode);
         camera.getParameter("whiteBalanceMode").setCurrentState(targetModeName);
 
-        sendControlEvent(
+        inputBus.publish(
                 new ControlEvent(
                         SYSTEM,
                         panel.getId(),
@@ -1175,7 +1170,7 @@ public class MainControlCore implements ControlEventListener{
                 break;
         }
 
-        sendControlEvent(returnEvent);
+        inputBus.publish(returnEvent);
         camera.getParameter("onePushWBal").setCurrentState(newState);
     }
 
@@ -1184,8 +1179,6 @@ public class MainControlCore implements ControlEventListener{
     }
 
     private void handleMidiStatusResponse(ControlEvent event) {
-
-        //System.out.println ("========= REQUEST MIDI VALUE ======= \n--> " + event.getControlID() + "  VAL = " + event.getValue());
 
         ControlPanel panel = panels.get(event.getPanel());
         if (panel == null) {
@@ -1291,7 +1284,7 @@ public class MainControlCore implements ControlEventListener{
 
         int newValue = mappedValueToMidi(focusPosition, focusField);
 
-        sendControlEvent(new ControlEvent(
+        inputBus.publish(new ControlEvent(
                         SYSTEM,
                         panel.getId(),
                         "FOCUS",
@@ -1315,6 +1308,11 @@ public class MainControlCore implements ControlEventListener{
           INITIALIZATION HELPERS
      ====================================*/
 
+    /**
+     * Publishes the complete indicator state for all control panels.
+     *
+     * <p>Used during application startup, reconfiguration and panel reassignment.</p>
+     */
     private void initializeStatusIndicators() {
 
         for (ControlPanel panel : panels.values()) {
@@ -1353,7 +1351,7 @@ public class MainControlCore implements ControlEventListener{
             updateCameraIndicators();
         }
 
-        sendControlEvent(
+        inputBus.publish(
                 new ControlEvent(
                         SYSTEM,
                         panel.getId(),
@@ -1362,7 +1360,7 @@ public class MainControlCore implements ControlEventListener{
                 )
         );
 
-        sendControlEvent(
+        inputBus.publish(
                 new ControlEvent(
                         SYSTEM,
                         panel.getId(),
@@ -1371,7 +1369,7 @@ public class MainControlCore implements ControlEventListener{
                 )
         );
 
-        sendControlEvent(
+        inputBus.publish(
                 new ControlEvent(
                         SYSTEM,
                         panel.getId(),
@@ -1380,7 +1378,7 @@ public class MainControlCore implements ControlEventListener{
                 )
         );
 
-        sendControlEvent(
+        inputBus.publish(
                 new ControlEvent(
                         SYSTEM,
                         panel.getId(),
@@ -1389,7 +1387,7 @@ public class MainControlCore implements ControlEventListener{
                 )
         );
 
-        sendControlEvent(
+        inputBus.publish(
                 new ControlEvent(
                         SYSTEM,
                         panel.getId(),
@@ -1398,7 +1396,7 @@ public class MainControlCore implements ControlEventListener{
                 )
         );
 
-        sendControlEvent(
+        inputBus.publish(
                 new ControlEvent(
                         SYSTEM,
                         panel.getId(),
@@ -1407,7 +1405,7 @@ public class MainControlCore implements ControlEventListener{
                 )
         );
 
-        sendControlEvent(
+        inputBus.publish(
                 new ControlEvent(
                         SYSTEM,
                         panel.getId(),
@@ -1441,7 +1439,7 @@ public class MainControlCore implements ControlEventListener{
             };
 
             for (int i = 1; i <= 4; i++) {
-                sendControlEvent(new ControlEvent(
+                inputBus.publish(new ControlEvent(
                         SYSTEM,
                         panel.getId(),
                         "CAM_SELECT_" + i + "_INDICATOR",
@@ -1454,6 +1452,11 @@ public class MainControlCore implements ControlEventListener{
                     CAMERA MANAGEMENT
        ==========================================*/
 
+    /**
+     * Rebinds a physical MIDI panel to a different logical camera panel.
+     *
+     * <p>The mapping is updated in runtime, synchronized with the GUI and persisted in application configuration.</p>
+     */
     private void handleCameraSelect(ControlEvent event) {
 
         if (event.getValue() == 0) {
@@ -1661,10 +1664,9 @@ public class MainControlCore implements ControlEventListener{
     }
 
     /**
-     * Synchronizes the current runtime state with external interfaces.
+     * Publishes the current runtime state to external listeners.
      *
-     * <p>This method updates GUI controls, MIDI indicators and camera assignment displays to match the current state maintained by
-     * the control core.</p>
+     * <p>The generated SYSTEM events allow GUI and MIDI controller implementations to rebuild their visual state.</p>
      */
     public void syncInterface(){
 
@@ -1699,37 +1701,6 @@ public class MainControlCore implements ControlEventListener{
         }
     }
 
-    /**
-     * Distributes a processed control event to all interested output subsystems.
-     *
-     * <p>Depending on the application state, the event may be forwarded to:</p>     *
-     * <ul>
-     *     <li>the MIDI controller for LED and display updates,</li>
-     *     <li>the graphical user interface,</li>
-     *     <li>other runtime synchronization components.</li>
-     * </ul>
-     *
-     * @param event event to distribute
-     */
-    private void sendControlEvent(ControlEvent event) {
-
-        ControlPanelId midiPanel = midiManager.getMidiBinding(event.getPanel());
-
-        if (midiPanel != null && configManager.getConfig().getSystem().getRunMode() == RunMode.FULL) {
-
-            ControlEvent midiEvent = new ControlEvent(
-                    SYSTEM,
-                    midiPanel,
-                    event.getAction(),
-                    event.getValue()
-            );
-
-            inputBus.publish(midiEvent);
-        }
-        if (gui != null) {
-            gui.handleControlEvent(event);
-        }
-    }
 
     /**
      * Creates and initializes a new logical control panel.
@@ -1755,12 +1726,10 @@ public class MainControlCore implements ControlEventListener{
     }
 
     /**
-     * Resolves the target control panel for an incoming event.
+     * Resolves an incoming event to a logical core control panel.
      *
-     * <p>MIDI events may require translation from a physical MIDI panel identifier to a logical camera control panel.</p>
-     *
-     * @param event source event
-     * @return resolved control panel identifier or {@code null} if no valid target exists
+     * <p>GUI events already reference logical panel identifiers.</p>
+     * <p>MIDI events are translated from physical controller panels to logical Core panels using mappings maintained by {@link MidiControllerManager}.</p>
      */
     private ControlPanelId resolveControlPanel(ControlEvent event) {
 

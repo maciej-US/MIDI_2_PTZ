@@ -83,7 +83,10 @@ public class AppConfig {
         /** Network transport configuration.*/
         private Transport transport = new Transport();
 
-        /** Network transport configuration.*/
+        /**
+         * Application operating mode.
+         * <p>Determines which subsystems are active during runtime.</p>
+         */
         private MainControlCore.RunMode runMode = MainControlCore.RunMode.FULL;
 
     }
@@ -99,15 +102,22 @@ public class AppConfig {
     /**
      * Configuration of the MIDI subsystem.
      *
-     * <p>Defines the input and output MIDI devices used by the application.</p>
+     * <p>Defines the MIDI controller mapping, transport backend, and transport-specific configuration parameters.</p>
+     *
+     * <p>The subsystem supports multiple transport implementations:</p>     *
+     * <ul>
+     *     <li><b>GENERAL_MIDI</b> - communication through the Java MIDI API,</li>
+     *     <li><b>USB_DIRECT</b> - direct communication with USB MIDI devices using LibUSB.</li>
+     * </ul>
      */
     @Data
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class MidiConfig {
 
+        /** Selected MIDI transport implementation. */
         private MidiTransport midiTransport;
 
-        /** Controller mapping definition.*/
+        /** MIDI controller definition and mapping file configuration. */
         private ControllerDefinition controller;
 
         /** Java MIDI transport configuration.*/
@@ -115,47 +125,84 @@ public class AppConfig {
 
         /** Direct USB transport configuration.*/
         private UsbDirectTransportConfig usbDirect;
-
-        /** MIDI input device configuration.*/
-        //private MidiEndpoint input = new MidiEndpoint();
-
-        /** MIDI output device configuration.*/
-        //private MidiEndpoint output = new MidiEndpoint();
     }
 
+    /**
+     * MIDI controller description.
+     *
+     * <p>Defines the controller mapping file and controller-specific
+     * runtime options.</p>
+     */
     @Data
     public static class ControllerDefinition {
 
+        /**
+         * Human-readable controller name.
+         *
+         * <p>This value is used only for identification and display  purposes and does not affect device selection.</p>
+         */
         private String deviceName;
 
+        /**
+         * Path to the MIDI controller definition file.
+         * <p>The definition file contains mappings between physical controls and application actions.</p>
+         */
         private String configFile;
 
+        /**
+         * Indicates whether the controller provides native LED blinking.
+         * <p>If enabled, the application uses hardware blinking modes instead of emulating flashing states in software.</p>
+         */
         private boolean hardwareBlinking;
     }
 
+
+    /**
+     * Configuration of the Java MIDI transport backend.
+     *
+     * <p>The transport uses the standard Java Sound MIDI API and  communicates with operating-system MIDI devices.</p>
+     */
     @Data
     public static class JavaMidiTransportConfig {
 
+        /** Configured MIDI input device name. */
         private String inputDeviceName;
 
+        /** Configured MIDI output device name. */
         private String outputDeviceName;
 
+        /** MIDI input device index reported by the system MIDI API. */
         private int inputDeviceIndex;
 
+        /** MIDI output device index reported by the system MIDI API. */
         private int outputDeviceIndex;
     }
 
+    /**
+     * Configuration of the direct USB MIDI transport backend.
+     *
+     * <p>This transport bypasses the Java MIDI subsystem and communicates directly with the USB device through LibUSB.</p>     *
+     * <p>The values stored here are automatically detected during device selection and normally do not require manual editing.</p>
+     */
     @Data
     public static class UsbDirectTransportConfig {
 
+        /** USB Vendor Identifier (VID).*/
         private int vid;
 
+        /** USB Product Identifier (PID).*/
         private int pid;
 
+        /**
+         * MIDI streaming interface number.         *
+         * <p>The interface must expose a USB MIDI Streaming endpoint.</p>
+         */
         private int interfaceNumber;
 
+        /** USB bulk input endpoint used for receiving MIDI packets.*/
         private int inputEndpoint;
 
+        /** USB bulk output endpoint used for transmitting MIDI packets.*/
         private int outputEndpoint;
     }
 
@@ -188,7 +235,6 @@ public class AppConfig {
         private String assignedMidiPanel;
 
     }
-
 
     /**
      * Network transport configuration.

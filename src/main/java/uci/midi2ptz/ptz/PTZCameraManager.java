@@ -416,7 +416,9 @@ public class PTZCameraManager {
             state.lastSuccesfullCommunication = System.currentTimeMillis();
             if (!camera.isOnline()) {
                 LOGGER.info("Camera " + cameraId + " communication restored.");
-                communicationReport(camera.getCameraId(), true);
+                camera.markOnline();
+
+                notifyCameraStatusChanged(camera, true);
             }
             return;
         }
@@ -434,6 +436,10 @@ public class PTZCameraManager {
             LOGGER.warning( "Camera " + cameraId + " marked OFFLINE.");
             camera.markOffline();
             notifyCameraStatusChanged(camera,false);
+            inputBus.publish(new ControlEvent(SYSTEM,
+                    getAssignedCorePanel(camera),
+                    "CLEAR_PENDING_EVENTS",
+                    0));
         }
     }
 
@@ -459,7 +465,7 @@ public class PTZCameraManager {
                 );
 
         //DEBUG
-        System.out.println("CAMERA STATUS NOTIFICATION EVENT: " + event);
+        //System.out.println("CAMERA STATUS NOTIFICATION EVENT: " + event);
 
         inputBus.publish(event);
     }

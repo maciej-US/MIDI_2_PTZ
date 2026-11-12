@@ -6,18 +6,45 @@ import org.usb4java.*;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 
+/** Low-level USB MIDI transport implementation.
+ *
+ * <p>The transport manages direct communication with a USB MIDI device using the libusb backend. It is responsible for device
+ * discovery, interface claiming and packet-level USB transfers.</p>
+ *
+ * <p>The class operates below the MIDI endpoint layer and exposes only raw USB MIDI packet transmission and reception services.</p>
+ *
+ * <p>A single transport instance is typically shared by both {@link UsbMidiInputEndpoint} and {@link UsbMidiOutputEndpoint}.</p> */
 public class UsbMidiTransport implements AutoCloseable {
 
+    /** USB vendor identifier. */
     private  final short VID;
+    /** USB product identifier. */
     private  final short PID;
 
+    /** Active libusb context. */
     private Context context;
-    private DeviceHandle handle;
-    @Getter
-    private int interfaceId;
-    private byte inputEndpoint;
-    private byte outputEndpoint;
 
+    /** Open device handle. */
+    private DeviceHandle handle;
+
+    /** Claimed USB MIDI interface number. */
+    @Getter
+    private final int interfaceId;
+    /** USB bulk IN endpoint. */
+    private final byte inputEndpoint;
+    /** USB bulk OUT endpoint. */
+    private final byte outputEndpoint;
+
+    /**
+     * Creates a USB MIDI transport descriptor.
+     *
+     * <p>The physical device is not opened during  construction. USB initialization is performed by {@link #start()}.</p>
+     *
+     * @param vid USB vendor identifier
+     * @param pid USB product identifier
+     * @param interfaceId MIDI interface num*er
+     * @param inputEndpoint USB IN endpoint
+     * @param outputEndpoint USB OUT endpoint */
     public UsbMidiTransport(short vid, short pid, int interfaceId, byte inputEndpoint, byte outputEndpoint) {
         this.VID = vid;
         this.PID = pid;
@@ -27,6 +54,12 @@ public class UsbMidiTransport implements AutoCloseable {
         this.context = new Context();
     }
 
+    /**
+     * Opens the USB MIDI device and claims the configured MIDI interface.
+     *
+     *<p>The target device is located using the configured VID/PID pair</p>
+     *
+     * @throws RuntimeException if device discovery, opening or interface claiming fails */
     public void start() {
 
         if (handle != null) {
@@ -65,6 +98,9 @@ public class UsbMidiTransport implements AutoCloseable {
 
     }
 
+    /**
+     * Releases the claimed USB interface and closes all libusb resources.
+     * <p>Calling this method multiple times is safe.</p> */
     @Override
     public void close() {
 
@@ -81,7 +117,12 @@ public class UsbMidiTransport implements AutoCloseable {
         }
     }
 
-
+    /** Reads a single USB MIDI packet.
+     *
+     * @param timeout transfer timeout in milliseconds
+     * @return received packet or {@code null} when the operation times out     *
+     * @throws RuntimeException when*the USB transfer fails
+     */
     public byte[] readPacket(int timeout) {
 
         ByteBuffer buffer = BufferUtils.allocateByteBuffer(64);
@@ -116,6 +157,10 @@ public class UsbMidiTransport implements AutoCloseable {
         return result;
     }
 
+    /** Sends a*raw USB MIDI packet.
+     *
+     * @param packet packet to transmit
+     * @throws RuntimeException when the USB transfer fails */
     public void sendPacket(byte[] packet) throws RuntimeException{
 
         ByteBuffer out =BufferUtils.allocateByteBuffer(packet.length);
@@ -131,7 +176,11 @@ public class UsbMidiTransport implements AutoCloseable {
         }
     }
 
-
+    /**
+     * Searches the USB device list for the configured VID/PID pair.
+     *
+     * @param list enumerated USB devices
+     * @return matching device or {@code null} */
     private Device getDevice(DeviceList list) {
 
         for (Device device : list) {

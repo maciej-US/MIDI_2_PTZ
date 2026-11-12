@@ -438,8 +438,6 @@ public class PTZCamera {
      * Mark the camera as offline.
      */
     public void markOffline(){
-        //DEBUG
-        System.out.println ("CAMERA " + this.cameraId + " SET OFFLINE");;
         this.online = false;
     }
 
@@ -454,8 +452,6 @@ public class PTZCamera {
     public ParameterState getParameter(String parameterName) {
 
         ParameterState parameter = this.parameters.get(parameterName);
-
-        //System.out.println("==== CAMERA ======\nparameter requested: " + parameterName);
 
         if (parameter != null) {
             return parameter;
@@ -480,10 +476,6 @@ public class PTZCamera {
         if (parameter != null && !forceUpdate) {
             return parameter;
         }
-
-        //Pobranie i aktualizacja stanu z kamery jeżeli nie ma w pamięci
-
-        //System.out.println(parameterName + "Parameter request send");
         controller.parameterInquiry(parameterName);
         return this.parameters.get(parameterName);
     }

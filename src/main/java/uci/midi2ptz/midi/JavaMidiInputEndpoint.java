@@ -1,8 +1,6 @@
 package uci.midi2ptz.midi;
 
 import lombok.Getter;
-import lombok.Setter;
-import uci.midi2ptz.core.MainControlCore;
 
 import javax.sound.midi.*;
 import java.util.concurrent.BlockingQueue;
@@ -20,56 +18,44 @@ import java.util.concurrent.LinkedBlockingQueue;
  * <h2>Event Flow</h2>
  *
  * <pre>
- * MIDI Device
- *      |
- *      v
- * MidiInputController
- *      |
- *      v
- * MidiEvent
- *      |
- *      v
- * eventQueue
- *      |
- *      v
- * MidiController
+ *       MIDI Device
+ *           |
+ *           v
+ * JavaMidiInputController
+ *           |
+ *           v
+ *       MidiEvent
+ *          |
+ *          v
+ *      eventQueue
+ *          |
+ *          v
+ *    MidiController
  * </pre>
  */
 public class JavaMidiInputEndpoint implements MidiInputEndpoint, Receiver{
 
+    /**Java MIDI device index.*/
     private final int deviceIndex;
+    /** Opened Java MIDI device instance.*/
     private MidiDevice device;
 
-    /**
-     * Queue containing translated MIDI events.
-     *
-     * <p>Incoming MIDI messages are converted to application-level {@link MidiEvent} instances and enqueued for asynchronous
-     * processing by the MIDI controller subsystem.</p>
-     */
+    /** Queue of normalized MIDI events awaiting processing by {@link MidiController}.*/
     @Getter
     private final BlockingQueue<MidiEvent> eventQueue = new LinkedBlockingQueue<>();
 
-    /**
-     * Indicates whether the input controller is currently active.
-     */
-    @Getter @Setter
-    private boolean running = false;
 
-    /**
-     * Creates and initializes a MIDI input device.
+    /**Creates a MIDI input endpoint descriptor.
      *
-     * <p>The specified MIDI device is opened and, when running in {@link MainControlCore.RunMode#FULL} mode, this class is registered
-     * as its message receiver.</p>
-     *
-     * @param deviceIndex index of the MIDI device reported by the Java MIDI subsystem     *
-     *
-     * @throws Exception if the device cannot be opened or initialized
+     * <p>The physical MIDI device is opened when {@link #start()} is invoked.</p>
+     * @param deviceIndex index of the MIDI device reported by Java MIDI
      */
-    public JavaMidiInputEndpoint(int deviceIndex) throws Exception {
-
+    public JavaMidiInputEndpoint(int deviceIndex) {
         this.deviceIndex = deviceIndex;
     }
 
+    /** Opens the configured MIDI device and registers this endpoint as its MIDI message receiver.
+     * @throws Exception if the MIDI devicecannot be opened */
     @Override
     public void start() throws Exception {
 
@@ -107,11 +93,8 @@ public class JavaMidiInputEndpoint implements MidiInputEndpoint, Receiver{
         }
     }
 
-    /**
-     * Closes the underlying MIDI device and releases all associated system resources.
-     *
-     * <p>Calling this method multiple times is safe.</p>
-     */
+    /**Closes the underlying MIDI device and releases associated resources.
+     * <p>Calling this method multiple times is safe.</p>*/
     @Override
     public void close() {
 
